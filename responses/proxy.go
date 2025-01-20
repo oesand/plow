@@ -1,8 +1,8 @@
 package responses
 
 import (
-	"giglet"
-	"giglet/specs"
+	"github.com/oesand/giglet"
+	"github.com/oesand/giglet/specs"
 	"io"
 	"net"
 	"time"
@@ -29,7 +29,7 @@ func UpgradeProxy(req giglet.Request) giglet.Response {
 		})
 	}
 
-	dest_conn, err := net.DialTimeout("tcp", host, 10 * time.Second)
+	dest_conn, err := net.DialTimeout("tcp", host, 10*time.Second)
 	if err != nil {
 		return TextResponse("proxy: destination 'Host' not available for connection", specs.ContentTypePlain, func(response giglet.Response) {
 			response.SetStatusCode(specs.StatusCodeBadGateway)
@@ -38,7 +38,7 @@ func UpgradeProxy(req giglet.Request) giglet.Response {
 
 	req.Hijack(func(conn net.Conn) {
 		defer dest_conn.Close()
-		
+
 		io.Copy(conn, dest_conn)
 		io.Copy(dest_conn, conn)
 	})

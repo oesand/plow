@@ -1,4 +1,4 @@
-module giglet
+module github.com/oesand/giglet
 
 go 1.23.2
 

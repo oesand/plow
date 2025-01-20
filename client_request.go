@@ -1,8 +1,8 @@
 package giglet
 
 import (
-	"giglet/internal"
-	"giglet/specs"
+	"github.com/oesand/giglet/internal"
+	"github.com/oesand/giglet/specs"
 	"io"
 )
 

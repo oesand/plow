@@ -1,8 +1,8 @@
 package responses
 
 import (
-	"giglet"
-	"giglet/specs"
+	"github.com/oesand/giglet"
+	"github.com/oesand/giglet/specs"
 	"net"
 	"strings"
 )
@@ -25,7 +25,7 @@ func UpgradeWebSocket(req giglet.Request, conf *WebSocketConf, handler WebSocket
 			response.SetStatusCode(specs.StatusCodeNotImplemented)
 		})
 	}
-	
+
 	challengeKey := req.Header().Get("Sec-Websocket-Key")
 	if len(challengeKey) == 0 {
 		return TextResponse("websocket: not a websocket handshake: `Sec-WebSocket-Key' header is missing or blank", specs.ContentTypePlain, func(response giglet.Response) {
@@ -41,9 +41,9 @@ func UpgradeWebSocket(req giglet.Request, conf *WebSocketConf, handler WebSocket
 
 		handler(&WebSocketConn{
 			request: req,
-			conn: conn,
-			reader: *reader,
-			conf: *conf,
+			conn:    conn,
+			reader:  *reader,
+			conf:    *conf,
 		})
 	})
 
@@ -53,10 +53,9 @@ func UpgradeWebSocket(req giglet.Request, conf *WebSocketConf, handler WebSocket
 		resp.Header().Set("Connection", "Upgrade")
 		resp.Header().Set("Sec-WebSocket-Accept", specs.ComputeWebSocketAcceptKey(challengeKey))
 		if conf.EnableCompression {
-			if ext := req.Header().Get("Sec-WebSocket-Extensions"); 
-				len(ext) > 0 && strings.Contains(ext, "permessage-deflate") {
+			if ext := req.Header().Get("Sec-WebSocket-Extensions"); len(ext) > 0 && strings.Contains(ext, "permessage-deflate") {
 
-				resp.Header().Set("Sec-WebSocket-Extensions", "permessage-deflate; server_no_context_takeover; client_no_context_takeover");
+				resp.Header().Set("Sec-WebSocket-Extensions", "permessage-deflate; server_no_context_takeover; client_no_context_takeover")
 			}
 		}
 	})

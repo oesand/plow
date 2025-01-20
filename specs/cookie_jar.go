@@ -2,7 +2,7 @@ package specs
 
 import (
 	"fmt"
-	"giglet/internal"
+	"github.com/oesand/giglet/internal"
 	"iter"
 	"sync"
 	"time"

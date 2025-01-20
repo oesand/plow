@@ -2,7 +2,7 @@ package specs
 
 import (
 	"bytes"
-	"giglet/internal"
+	"github.com/oesand/giglet/internal"
 	"iter"
 )
 

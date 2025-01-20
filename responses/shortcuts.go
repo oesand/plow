@@ -1,9 +1,9 @@
 package responses
 
 import (
-	"giglet"
-	"giglet/internal"
-	"giglet/specs"
+	"github.com/oesand/giglet"
+	"github.com/oesand/giglet/internal"
+	"github.com/oesand/giglet/specs"
 	"io"
 	"strconv"
 )

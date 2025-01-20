@@ -6,7 +6,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"giglet/specs"
+	"github.com/oesand/giglet/specs"
 	"io"
 	"iter"
 	"net"

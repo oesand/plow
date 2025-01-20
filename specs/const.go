@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"giglet/internal"
+	"github.com/oesand/giglet/internal"
 )
 
 const TimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"

@@ -2,8 +2,8 @@ package responses
 
 import (
 	"errors"
-	"giglet/internal"
-	"giglet/specs"
+	"github.com/oesand/giglet/internal"
+	"github.com/oesand/giglet/specs"
 )
 
 type WebSocketHandler func(conn *WebSocketConn)

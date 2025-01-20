@@ -3,8 +3,8 @@ package giglet
 import (
 	"context"
 	"errors"
-	"giglet/internal"
-	"giglet/specs"
+	"github.com/oesand/giglet/internal"
+	"github.com/oesand/giglet/specs"
 	"io"
 	"mime/multipart"
 	"net"

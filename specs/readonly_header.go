@@ -1,7 +1,7 @@
 package specs
 
 import (
-	"giglet/internal"
+	"github.com/oesand/giglet/internal"
 	"iter"
 	"mime"
 	"strconv"
