@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        type: string
+        description: 'New version (eg: v1.2.3)'
+        required: true
+
+jobs:
+  check_admin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if triggered by admin
+        id: check_admin
+        run: |
+          permission=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/collaborators/${{ github.actor }}/permission" \
+            | jq -r .permission)
+          if [ "$permission" = "admin" ]; then
+            echo "is_admin=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_admin=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run if admin
+        if: steps.check_admin.outputs.is_admin == 'true'
+        run: echo "Workflow triggered by an admin - ${{ github.actor }}"
+
+      - name: Fail if not admin
+        if: steps.check_admin.outputs.is_admin != 'true'
+        run: |
+          echo "Error: This workflow can only be triggered by organization admins"
+          exit 1
+
+  release:
+    needs: check_admin
+    if: needs.check_admin.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.23.2
+
+#      - name: Test
+#        run: make test
+
+      # remove tests in order to clean dependencies
+#      - name: Remove xxx_test.go files
+#        run: rm -rf */*_test.go docker-compose.yml
+
+      # cleanup test dependencies
+      - name: Cleanup dependencies
+        run: go mod tidy
+
+      - name: List files
+        run: tree -Cfi
+      - name: Write new go.mod into logs
+        run: cat go.mod
+      - name: Write new go.sum into logs
+        run: cat go.sum
+
+      - name: Create tag
+        run: |
+          git config --global user.name '${{ github.triggering_actor }}'
+          git config --global user.email "${{ github.triggering_actor }}@users.noreply.github.com"
+
+          git add .
+          git commit --allow-empty -m 'bump ${{ inputs.version }}'
+          git tag ${{ inputs.version }}
+          git push origin ${{ inputs.version }}
+
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ inputs.version }}" \
+            --title "${{ inputs.version }}" \
+            --generate-notes
