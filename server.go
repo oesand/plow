@@ -179,10 +179,11 @@ func (server *Server) OnShutdown(handler EventHandler) {
 
 func (server *Server) Shutdown() {
 	server.mutex.Lock()
+	defer server.mutex.Unlock()
+
 	for _, handle := range server.onShutdown {
 		go handle()
 	}
-	server.mutex.Unlock()
 
 	server.isShuttingdown.Store(true)
 	server.listenerTrack.Wait()

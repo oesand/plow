@@ -19,7 +19,7 @@ var ErrorServerShutdown = &specs.GigletError{
 
 func (server *Server) Serve(listener net.Listener) error {
 	if listener == nil {
-		return validationErr("giglet: nil listener")
+		return validationErr("nil listener")
 	} else if server.isShuttingdown.Load() {
 		return ErrorServerShutdown
 	}

@@ -1,12 +1,9 @@
-name: Release
+name: Auto Release 🚀
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        type: string
-        description: 'New version (eg: v1.2.3)'
-        required: true
+  push:
+    tags:
+      - "v*.*.*"
 
 jobs:
   check_admin:

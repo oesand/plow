@@ -131,7 +131,10 @@ func (req *httpRequest) PostForm() (specs.Form, error) {
 		}
 		return req.cachedForm, nil
 	} else if req.Header().ContentType() != specs.ContentTypeForm {
-		return nil, errors.New("giglet: this Content-Type is not a urlencoded-form")
+		return nil, &specs.GigletError{
+			Op:  "form/reading",
+			Err: errors.New("this Content-Type is not a urlencoded-form"),
+		}
 	} else if req.bodyReaded {
 		return nil, nil
 	}
@@ -153,7 +156,10 @@ func (req *httpRequest) MultipartForm() (*multipart.Form, error) {
 	if req.body == nil {
 		return nil, io.EOF
 	} else if req.Header().ContentType() != specs.ContentTypeMultipart {
-		return nil, errors.New("giglet: this Content-Type is not a multipart-form")
+		return nil, &specs.GigletError{
+			Op:  "multipart/reading",
+			Err: errors.New("this Content-Type is not a multipart-form"),
+		}
 	} else if req.cachedMultipart != nil {
 		return req.cachedMultipart, nil
 	} else if req.bodyReaded {
@@ -163,7 +169,10 @@ func (req *httpRequest) MultipartForm() (*multipart.Form, error) {
 
 	boundary := req.header.GetMediaParams("boundary")
 	if len(boundary) == 0 {
-		return nil, errors.New("giglet: this request Content-Type does not contains boundary")
+		return nil, &specs.GigletError{
+			Op:  "multipart/reading",
+			Err: errors.New("this request Content-Type does not contains boundary"),
+		}
 	}
 
 	reader := multipart.NewReader(req, boundary)

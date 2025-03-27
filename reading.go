@@ -124,10 +124,16 @@ func readResponse(ctx context.Context, reader *bufio.Reader) (*HttpClientRespons
 
 	status, protoMajor, protoMinor, ok := parseResponseHeadline(line)
 	if !ok {
-		return nil, errors.New("giglet: invalid headline")
+		return nil, &specs.GigletError{
+			Op:  readingOp,
+			Err: errors.New("invalid headline"),
+		}
 	}
 	if protoMajor != 1 {
-		return nil, fmt.Errorf("giglet: unsupported http version %d.%d", protoMajor, protoMinor)
+		return nil, &specs.GigletError{
+			Op:  readingOp,
+			Err: fmt.Errorf("unsupported http version %d.%d", protoMajor, protoMinor),
+		}
 	}
 
 	headers, cookies, err := parseHeaders(ctx, reader)
@@ -156,7 +162,10 @@ func parseHeaders(ctx context.Context, reader *bufio.Reader) (map[string]string,
 		if err != nil {
 			return nil, nil, err
 		}
-		return nil, nil, errors.New("giglet: malformed header initial line: " + string(line))
+		return nil, nil, &specs.GigletError{
+			Op:  "headers/reading",
+			Err: fmt.Errorf("malformed header initial line: %s", line),
+		}
 	}
 
 	headers := map[string]string{}
@@ -172,7 +181,10 @@ func parseHeaders(ctx context.Context, reader *bufio.Reader) (map[string]string,
 
 		line, err := internal.ReadBufferLine(reader, 0)
 		if err != nil {
-			return nil, nil, errors.New("giglet: header: " + err.Error())
+			return nil, nil, &specs.GigletError{
+				Op:  "headers/reading",
+				Err: err,
+			}
 		} else if len(line) == 0 {
 			return headers, cookies, nil
 		}

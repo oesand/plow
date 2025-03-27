@@ -139,7 +139,10 @@ func (client *Client) MakeContext(ctx context.Context, request *HttpClientReques
 			baseUrl := *url
 			url, err = specs.ParseUrl(location)
 			if err != nil {
-				return nil, fmt.Errorf("giglet: redirect error %s", err)
+				return nil, &specs.GigletError{
+					Op:  "serve/redirect",
+					Err: err,
+				}
 			}
 			request.Header().Set("Host", url.Host)
 			if url.Scheme == "" {

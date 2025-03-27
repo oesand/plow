@@ -7,10 +7,10 @@ import (
 )
 
 func NewRequest(method specs.HttpMethod, url *specs.Url) *HttpClientRequest {
-	return NewPostRequest(method, url, nil)
+	return NewSendRequest(method, url, nil)
 }
 
-func NewPostRequest(method specs.HttpMethod, url *specs.Url, buffer []byte) *HttpClientRequest {
+func NewSendRequest(method specs.HttpMethod, url *specs.Url, buffer []byte) *HttpClientRequest {
 	if method == "" {
 		if buffer == nil {
 			method = specs.HttpMethodGet
@@ -32,7 +32,7 @@ func NewPostRequest(method specs.HttpMethod, url *specs.Url, buffer []byte) *Htt
 	}
 }
 
-func NewPostStreamRequest(method specs.HttpMethod, url *specs.Url, stream io.Reader) *HttpClientRequest {
+func NewSendStreamRequest(method specs.HttpMethod, url *specs.Url, stream io.Reader) *HttpClientRequest {
 	if method == "" {
 		method = specs.HttpMethodPost
 	} else if !method.IsValid() {

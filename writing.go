@@ -21,7 +21,10 @@ func writeResponseHead(writer io.Writer, is11 bool, code specs.StatusCode, heade
 		code = specs.StatusCodeOK
 	}
 	if header == nil {
-		return -1, validationErr("giglet: invalid response header")
+		return -1, &specs.GigletError{
+			Op:  "head/write",
+			Err: errors.New("invalid response header"),
+		}
 	}
 
 	// Headline
