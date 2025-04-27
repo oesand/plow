@@ -12,4 +12,4 @@ jobs:
           go-version: 1.23.2
 
       - name: 🛠️ Tests
-        run: make test
+        run: go test ./backend/...
