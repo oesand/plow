@@ -1,4 +1,4 @@
-name: Dependabot auto-merge
+name: Dependabot auto-merge 🤖
 on: pull_request
 
 permissions:
@@ -13,12 +13,14 @@ jobs:
       PR_URL: ${{github.event.pull_request.html_url}}
       GH_TOKEN: ${{secrets.GITHUB_TOKEN}}
     steps:
-      - name: metadata
+      - name: 📌 Metadata
         id: metadata
         uses: dependabot/fetch-metadata@v2
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
-      - name: approve
+
+      - name: ✅ Approve
         run: gh pr review --approve "$PR_URL"
-      - name: merge
+
+      - name: ✨ Merge
         run: gh pr merge --auto --squash --delete-branch "$PR_URL"

@@ -233,10 +233,7 @@ func (url *Url) QueryParams() Query {
 		return url.queryParams
 	}
 
-	query, err := ParseQuery(url.query)
-	if err != nil {
-		query = Query{}
-	}
+	query := ParseQuery(url.query)
 	url.queryParams = query
 	return query
 }

@@ -26,7 +26,7 @@ type Server struct {
 	// Server name for sending in response headers.
 	ServerName string
 
-	// ReadTimeout is the maximum duration for reading the entire
+	// ReadTimeout is the maximum duration for server the entire
 	// request, including the body. A zero or negative value means
 	// there will be no timeout.
 	ReadTimeout time.Duration
@@ -39,11 +39,19 @@ type Server struct {
 	// TLSConfig optionally provides a TLS configuration
 	TLSConfig *tls.Config
 
-	// ContentMaxSizeBytes controls the maximum number of bytes the
-	// server will read parsing the request header's keys and
-	// values, including the request line and the request body.
-	// If zero, DefaultContentMaxSizeBytes is used.
-	ContentMaxSizeBytes int64
+	// ReadLineMaxLength maximum size in bytes
+	// to read lines in the request
+	// such as headers and headlines
+	//
+	// If zero there is no limit
+	ReadLineMaxLength int64
+
+	// HeadMaxLength maximum size in bytes
+	// to read lines in the request
+	// such as headline and headers together
+	//
+	// If zero there is no limit
+	HeadMaxLength int64
 
 	nextProtos     map[string]NextProtoHandler
 	isShuttingdown atomic.Bool
@@ -74,9 +82,9 @@ func (server *Server) applyWriteTimeout(conn net.Conn) {
 
 func (server *Server) HasNextProto(proto string) bool {
 	server.mutex.Lock()
-	_, has := server.nextProtos[proto]
-	server.mutex.Unlock()
+	defer server.mutex.Unlock()
 
+	_, has := server.nextProtos[proto]
 	return has
 }
 

@@ -4,18 +4,16 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"github.com/oesand/giglet/internal"
+	"github.com/oesand/giglet/internal/server"
+	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal/writing"
 	"github.com/oesand/giglet/specs"
-	"io"
 	"net"
 	"runtime"
 	"time"
 )
 
-var ErrorServerShutdown = &specs.GigletError{
-	Op:  specs.GigletOp("server"),
-	Err: errors.New("shutdown"),
-}
+var ErrorServerShutdown = specs.NewOpError("server", "shutdown")
 
 func (server *Server) Serve(listener net.Listener) error {
 	if listener == nil {
@@ -55,14 +53,14 @@ func (server *Server) Serve(listener net.Listener) error {
 	}
 }
 
-var bufioReaderPool internal.BufioReaderPool
+var bufioReaderPool utils.BufioReaderPool
 
-func (server *Server) handle(conn net.Conn, ctx context.Context) {
-	if server.Handler == nil || server.isShuttingdown.Load() {
+func (srv *Server) handle(conn net.Conn, ctx context.Context) {
+	if srv.Handler == nil || srv.isShuttingdown.Load() {
 		conn.Close()
 		return
 	}
-	handler := server.Handler
+	handler := srv.Handler
 
 	if tlsConn, ok := conn.(*tls.Conn); ok {
 		if err := tlsConn.HandshakeContext(ctx); err != nil {
@@ -70,20 +68,20 @@ func (server *Server) handle(conn net.Conn, ctx context.Context) {
 			// TLS, assume they're speaking plaintext HTTP and write a
 			// 400 response on the TLS conn's underlying net.Conn.
 			if re, ok := err.(tls.RecordHeaderError); ok && re.Conn != nil {
-				re.Conn.Write(responseDowngradeHTTPS)
-				re.Conn.Close()
+				responseErrDowngradeHTTPS.Write(conn)
+				conn.Close()
 				return
 			}
-			if server.Debug {
-				server.logger().Printf("giglet: tls handshake error from %s: %v", conn.RemoteAddr(), err)
+			if srv.Debug {
+				srv.logger().Printf("giglet: tls handshake error from %s: %v", conn.RemoteAddr(), err)
 			}
 			return
 		}
 
 		proto := tlsConn.ConnectionState().NegotiatedProtocol
 
-		if server.nextProtos != nil {
-			if handler, ok := server.nextProtos[proto]; ok {
+		if srv.nextProtos != nil {
+			if handler, ok := srv.nextProtos[proto]; ok {
 				handler(tlsConn)
 				return
 			}
@@ -92,7 +90,7 @@ func (server *Server) handle(conn net.Conn, ctx context.Context) {
 		conn = tlsConn
 	}
 
-	if server.isShuttingdown.Load() {
+	if srv.isShuttingdown.Load() {
 		conn.Close()
 		return
 	}
@@ -105,8 +103,8 @@ func (server *Server) handle(conn net.Conn, ctx context.Context) {
 			buf := make([]byte, size)
 			buf = buf[:runtime.Stack(buf, false)]
 
-			if server.Debug {
-				server.logger().Printf("http: panic serving %v: %v\n%s", conn.RemoteAddr(), err, buf)
+			if srv.Debug {
+				srv.logger().Printf("http: panic serving %v: %v\n%s", conn.RemoteAddr(), err, buf)
 			}
 		}
 
@@ -118,39 +116,21 @@ func (server *Server) handle(conn net.Conn, ctx context.Context) {
 	defer cancel()
 
 	for {
-		if server.ContentMaxSizeBytes > 0 {
-			reader.Reset(io.LimitReader(conn, server.ContentMaxSizeBytes))
-		} else if DefaultContentMaxSizeBytes > 0 {
-			reader.Reset(io.LimitReader(conn, DefaultContentMaxSizeBytes))
-		}
-
-		server.applyReadTimeout(conn)
-		req, err := readRequest(ctx, reader)
-		conn.SetReadDeadline(zeroTime)
-
-		req.server = server
-		req.conn = conn
-		req.context = ctx
+		req, err := server.ReadRequest(ctx, conn, reader, srv.ReadTimeout, srv.ReadLineMaxLength, srv.HeadMaxLength)
 
 		if err != nil {
-			if server.Debug {
-				server.logger().Printf("http: read request error from %s: %v", conn.RemoteAddr(), err)
+			if srv.Debug {
+				srv.logger().Printf("http: read request error from %s: %v", conn.RemoteAddr(), err)
 			}
-			switch {
-
-			case specs.MatchError(err, ErrorReadingUnsupportedEncoding):
-				conn.Write(responseUnsupportedEncoding)
-
-			default:
-				if !internal.IsCommonNetReadError(err) {
-					if serr, ok := err.(*statusErrorResponse); ok {
-						serr.Write(conn)
-					} else {
-						conn.Write(responseNotProcessableError)
-					}
+			if !utils.IsCommonNetReadError(err) {
+				var respErr *server.ErrorResponse
+				if errors.As(err, &respErr) {
+					respErr.Write(conn)
+				} else {
+					responseErrNotProcessable.Write(conn)
 				}
-
 			}
+			conn.Close()
 			break
 		}
 
@@ -167,8 +147,8 @@ func (server *Server) handle(conn net.Conn, ctx context.Context) {
 			header = &specs.Header{}
 		}
 
-		if len(server.ServerName) > 0 {
-			header.Set("Server", server.ServerName)
+		if len(srv.ServerName) > 0 {
+			header.Set("Server", srv.ServerName)
 		} else if len(DefaultServerName) > 0 {
 			header.Set("Server", DefaultServerName)
 		}
@@ -183,27 +163,25 @@ func (server *Server) handle(conn net.Conn, ctx context.Context) {
 			}
 		}
 
-		_, err = writeResponseHead(conn, req.ProtoAtLeast(1, 1), code, header)
+		protoMajor, protoMinor := req.ProtoVersion()
+		isHttp11 := protoMajor == 1 && protoMinor == 1
+		_, err = writing.WriteResponseHead(conn, isHttp11, code, header)
 		if err != nil {
-			if server.Debug {
-				server.logger().Printf("http: send response head to %s error: %v", conn.RemoteAddr(), err)
+			if srv.Debug {
+				srv.logger().Printf("http: send response head to %s error: %v", conn.RemoteAddr(), err)
 			}
 			break
 		}
-		if req.method.CanHaveResponseBody() && writable != nil {
-			if server.WriteTimeout > 0 {
-				server.applyWriteTimeout(conn)
+		if req.Method().CanHaveResponseBody() && writable != nil {
+			if srv.WriteTimeout > 0 {
+				srv.applyWriteTimeout(conn)
 			}
 
 			writable.WriteBody(conn)
 
-			if server.WriteTimeout > 0 {
+			if srv.WriteTimeout > 0 {
 				conn.SetWriteDeadline(zeroTime)
 			}
-		}
-
-		if req.cachedMultipart != nil {
-			req.cachedMultipart.RemoveAll()
 		}
 
 		select {
@@ -212,10 +190,10 @@ func (server *Server) handle(conn net.Conn, ctx context.Context) {
 		default:
 		}
 
-		if server.isShuttingdown.Load() {
+		if srv.isShuttingdown.Load() {
 			break
-		} else if req.hijacker != nil {
-			req.hijacker(conn)
+		} else if hijacker := req.Hijacker(); hijacker != nil {
+			hijacker(conn)
 			break
 		} else if req.Method() != specs.HttpMethodHead && writable == nil && code.HaveBody() {
 			break

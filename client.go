@@ -6,7 +6,9 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/oesand/giglet/internal"
+	"github.com/oesand/giglet/internal/client"
+	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal/writing"
 	"github.com/oesand/giglet/specs"
 	"golang.org/x/net/http/httpguts"
 	"io"
@@ -17,13 +19,33 @@ import (
 	"time"
 )
 
-func MakeRequest(request *HttpClientRequest) (*HttpClientResponse, error) {
+func MakeRequest(request ClientRequest) (ClientResponse, error) {
 	cln := Client{}
 	return cln.Make(request)
 }
 
+func DefaultClient() *Client {
+	return &Client{
+		ReadLineMaxLength: 256,      // 1 MB
+		HeadMaxLength:     5 * 1024, // 5 MB
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+	}
+}
+
 type Client struct {
-	// ReadTimeout is the maximum duration for reading the entire
+	// ReadLineMaxLength maximum size in bytes
+	// to read lines in the response
+	// such as headers and headlines
+	// If zero there is no limit
+	ReadLineMaxLength int64
+
+	// HeadMaxLength maximum size in bytes
+	// to read headline and headers together
+	// If zero there is no limit
+	HeadMaxLength int64
+
+	// ReadTimeout is the maximum duration for server the entire
 	// response, including the body. A zero or negative value means
 	// there will be no timeout.
 	ReadTimeout time.Duration
@@ -70,27 +92,27 @@ type Client struct {
 	DialTLSHandshakeContext func(ctx context.Context, conn net.Conn, host string) (net.Conn, error)
 }
 
-func (client *Client) Make(request *HttpClientRequest) (*HttpClientResponse, error) {
-	return client.MakeContext(context.Background(), request)
+func (cln *Client) Make(request ClientRequest) (ClientResponse, error) {
+	return cln.MakeContext(context.Background(), request)
 }
 
-func (client *Client) applyReadTimeout(conn net.Conn) {
-	if client.ReadTimeout > 0 {
-		conn.SetReadDeadline(time.Now().Add(client.ReadTimeout))
+func (cln *Client) applyReadTimeout(conn net.Conn) {
+	if cln.ReadTimeout > 0 {
+		conn.SetReadDeadline(time.Now().Add(cln.ReadTimeout))
 	}
 }
 
-func (client *Client) applyWriteTimeout(conn net.Conn) {
-	if client.WriteTimeout > 0 {
-		conn.SetWriteDeadline(time.Now().Add(client.WriteTimeout))
+func (cln *Client) applyWriteTimeout(conn net.Conn) {
+	if cln.WriteTimeout > 0 {
+		conn.SetWriteDeadline(time.Now().Add(cln.WriteTimeout))
 	}
 }
 
-func (client *Client) MakeContext(ctx context.Context, request *HttpClientRequest) (*HttpClientResponse, error) {
+func (cln *Client) MakeContext(ctx context.Context, request ClientRequest) (ClientResponse, error) {
 	if ctx == nil {
 		return nil, validationErr("nil Context pointer")
 	}
-	if client == nil {
+	if cln == nil {
 		return nil, validationErr("nil Client pointer")
 	}
 	if request == nil {
@@ -116,7 +138,8 @@ func (client *Client) MakeContext(ctx context.Context, request *HttpClientReques
 		default:
 		}
 
-		resp, err := client.send(ctx, method, url, request.Header(), request)
+		writer, _ := request.(BodyWriter)
+		resp, err := cln.send(ctx, method, url, request.Header(), writer)
 
 		if err != nil {
 			return nil, err
@@ -161,7 +184,7 @@ func (client *Client) MakeContext(ctx context.Context, request *HttpClientReques
 	}
 }
 
-func (client *Client) send(ctx context.Context, method specs.HttpMethod, url *specs.Url, header *specs.Header, writer BodyWriter) (*HttpClientResponse, error) {
+func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url *specs.Url, header *specs.Header, writer BodyWriter) (ClientResponse, error) {
 	if !(url.Scheme == "http" || url.Scheme == "https") || url.Host == "" {
 		return nil, validationErr("invalid request url '%s'", string(method))
 	}
@@ -185,15 +208,15 @@ func (client *Client) send(ctx context.Context, method specs.HttpMethod, url *sp
 	}
 
 	if url.Scheme == "https" {
-		if client.DialTLSHandshakeContext != nil {
-			conn, err = client.DialTLSHandshakeContext(ctx, conn, url.Host)
+		if cln.DialTLSHandshakeContext != nil {
+			conn, err = cln.DialTLSHandshakeContext(ctx, conn, url.Host)
 		} else {
 			var tlsCfg *tls.Config
 
-			if client.TLSConfig == nil {
+			if cln.TLSConfig == nil {
 				tlsCfg = &tls.Config{}
 			} else {
-				tlsCfg = client.TLSConfig.Clone()
+				tlsCfg = cln.TLSConfig.Clone()
 			}
 
 			if tlsCfg.ServerName == "" {
@@ -212,16 +235,16 @@ func (client *Client) send(ctx context.Context, method specs.HttpMethod, url *sp
 		}
 	}
 
-	if client.Jar != nil {
-		for cookie := range client.Jar.Cookies(url) {
+	if cln.Jar != nil {
+		for cookie := range cln.Jar.Cookies(url) {
 			header.SetCookie(cookie)
 		}
 	}
-	if client.Header != nil {
-		for name, value := range client.Header.All() {
+	if cln.Header != nil {
+		for name, value := range cln.Header.All() {
 			header.Set(name, value)
 		}
-		for cookie := range client.Header.Cookies() {
+		for cookie := range cln.Header.Cookies() {
 			header.SetCookie(cookie)
 		}
 	}
@@ -249,12 +272,12 @@ func (client *Client) send(ctx context.Context, method specs.HttpMethod, url *sp
 		header.Set("Connection", "close")
 	}
 
-	client.applyWriteTimeout(conn)
-	_, err = writeRequestHead(conn, method, url, header)
+	cln.applyWriteTimeout(conn)
+	_, err = writing.WriteRequestHead(conn, method, url, header)
 
 	if err != nil {
 		if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
-			return nil, ErrorWritingTimeout
+			return nil, specs.NewOpError("write", "request head write timeout")
 		}
 		return nil, err
 	}
@@ -263,29 +286,29 @@ func (client *Client) send(ctx context.Context, method specs.HttpMethod, url *sp
 		err = writer.WriteBody(conn)
 		if err != nil {
 			if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
-				return nil, ErrorWritingTimeout
+				return nil, specs.NewOpError("write", "request body write timeout")
 			}
 			return nil, err
 		}
 	}
 	conn.SetWriteDeadline(zeroTime)
 
-	client.applyReadTimeout(conn)
+	cln.applyReadTimeout(conn)
 	headerReader := bufioReaderPool.Get(conn)
-	resp, err := readResponse(ctx, headerReader)
+	resp, err := client.ReadResponse(ctx, headerReader, cln.ReadLineMaxLength, cln.HeadMaxLength)
 	extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
 	bufioReaderPool.Put(headerReader)
 	conn.SetReadDeadline(zeroTime)
 
 	if err != nil {
 		if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
-			return nil, ErrorReadingTimeout
+			return nil, specs.NewOpError("client/response", "timeout")
 		}
 		return nil, err
 	}
 
-	if client.Jar != nil {
-		client.Jar.SetCookiesIter(url, resp.header.Cookies())
+	if cln.Jar != nil {
+		cln.Jar.SetCookiesIter(url, resp.Header().Cookies())
 	}
 
 	if !method.CanHaveResponseBody() || !resp.StatusCode().HaveBody() || resp.StatusCode().IsRedirect() {
@@ -298,7 +321,7 @@ func (client *Client) send(ctx context.Context, method specs.HttpMethod, url *sp
 		case "chunked":
 			chunkedBuf := bufioReaderPool.Get(reader)
 			reader = httputil.NewChunkedReader(chunkedBuf)
-			chainedClosers = append(chainedClosers, internal.Closer(func() error {
+			chainedClosers = append(chainedClosers, utils.Closer(func() error {
 				bufioReaderPool.Put(chunkedBuf)
 				return nil
 			}))
@@ -309,7 +332,7 @@ func (client *Client) send(ctx context.Context, method specs.HttpMethod, url *sp
 			gzreader, err := gzip.NewReader(reader)
 			if err != nil {
 				return nil, &specs.GigletError{
-					Op:  readingOp,
+					Op:  "read/encoding/gzip",
 					Err: fmt.Errorf("gzip: %s", err),
 				}
 			}
@@ -317,15 +340,16 @@ func (client *Client) send(ctx context.Context, method specs.HttpMethod, url *sp
 			chainedClosers = append(chainedClosers, gzreader)
 		}
 
-		resp.body = internal.ReadClose(func(p []byte) (int, error) {
-			client.applyReadTimeout(conn)
-			return reader.Read(p)
-		}, func() error {
-			for closer := range internal.ReverseIter(chainedClosers) {
-				err = closer.Close()
-			}
-			return err
-		})
+		resp.SetBody(
+			utils.ReadClose(func(p []byte) (int, error) {
+				cln.applyReadTimeout(conn)
+				return reader.Read(p)
+			}, func() error {
+				for closer := range utils.ReverseIter(chainedClosers) {
+					err = closer.Close()
+				}
+				return err
+			}))
 	}
 
 	return resp, nil

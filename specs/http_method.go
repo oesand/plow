@@ -9,11 +9,11 @@ const (
 	HttpMethodDelete  HttpMethod = "DELETE"
 	HttpMethodOptions HttpMethod = "OPTIONS"
 	HttpMethodHead    HttpMethod = "HEAD"
+	HttpMethodConnect HttpMethod = "CONNECT"
 	HttpMethodPatch   HttpMethod = "PATCH"
 	HttpMethodTrace   HttpMethod = "TRACE"
 
-	HttpMethodConnect HttpMethod = "CONNECT"
-	HttpMethodPreface HttpMethod = "PRI"
+	MethodPreface HttpMethod = "PRI"
 )
 
 func (method HttpMethod) IsValid() bool {
@@ -23,6 +23,7 @@ func (method HttpMethod) IsValid() bool {
 		method == HttpMethodDelete ||
 		method == HttpMethodOptions ||
 		method == HttpMethodHead ||
+		method == HttpMethodConnect ||
 		method == HttpMethodPatch ||
 		method == HttpMethodTrace
 }

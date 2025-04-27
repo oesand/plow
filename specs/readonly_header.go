@@ -1,13 +1,12 @@
 package specs
 
 import (
-	"github.com/oesand/giglet/internal"
+	"github.com/oesand/giglet/internal/utils"
 	"iter"
 	"mime"
 	"strconv"
 )
 
-// Creates read-only headers struct from mapped valid cased (Title-Case) headers map
 func NewReadOnlyHeader(headers map[string]string, cookies map[string]*Cookie) *ReadOnlyHeader {
 	header := &ReadOnlyHeader{headers: headers}
 	if media, has := headers["Content-Type"]; has {
@@ -34,7 +33,7 @@ func NewReadOnlyHeader(headers map[string]string, cookies map[string]*Cookie) *R
 }
 
 type ReadOnlyHeader struct {
-	_ internal.NoCopy
+	_ utils.NoCopy
 
 	contentType   ContentType
 	contentLength int64
@@ -67,7 +66,7 @@ func (header *ReadOnlyHeader) TryGet(name string) (string, bool) {
 
 func (header *ReadOnlyHeader) All() iter.Seq2[string, string] {
 	if header.headers == nil {
-		return internal.EmptyIterSeq2[string, string]()
+		return utils.EmptyIterSeq2[string, string]()
 	}
 
 	return func(yield func(string, string) bool) {
@@ -103,7 +102,7 @@ func (header *ReadOnlyHeader) GetCookie(name string) *Cookie {
 
 func (header *ReadOnlyHeader) Cookies() iter.Seq[Cookie] {
 	if header.cookies == nil {
-		return internal.EmptyIterSeq[Cookie]()
+		return utils.EmptyIterSeq[Cookie]()
 	}
 
 	return func(yield func(Cookie) bool) {

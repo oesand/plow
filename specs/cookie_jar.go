@@ -2,7 +2,7 @@ package specs
 
 import (
 	"fmt"
-	"github.com/oesand/giglet/internal"
+	"github.com/oesand/giglet/internal/utils"
 	"iter"
 	"sync"
 	"time"
@@ -49,12 +49,12 @@ func (jar *CookieJar) Cookies(url *Url) iter.Seq[Cookie] {
 
 	host := url.SecondLevelHost()
 	if host == "" {
-		return internal.EmptyIterSeq[Cookie]()
+		return utils.EmptyIterSeq[Cookie]()
 	}
 
 	sub, has := jar.cookies[host]
 	if !has {
-		return internal.EmptyIterSeq[Cookie]()
+		return utils.EmptyIterSeq[Cookie]()
 	}
 
 	return func(yield func(Cookie) bool) {
