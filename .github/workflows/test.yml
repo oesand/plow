@@ -6,11 +6,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Debug
-        run: |
-          pwd
-          ls -la
-        
+      - uses: actions/checkout@v4
 
       - name: 📦 Set up Go
         uses: actions/setup-go@v5
