@@ -35,10 +35,6 @@ jobs:
     needs: check_admin
     if: needs.check_admin.result == 'success'
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./backend
-
     steps:
       - uses: actions/checkout@v4
 
