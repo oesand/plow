@@ -38,8 +38,8 @@ func TestWriteResponseHead(t *testing.T) {
 			}),
 			expected: strings.Join([]string{
 				"HTTP/1.1 200 OK",
-				"Header: Value",
 				"Content-Type: text/html",
+				"Header: Value",
 				"Set-Cookie: Cookie=Value",
 				"Set-Cookie: sessionid=abc123; Max-Age=3600; Domain=example.com; Path=/home; HttpOnly; Secure; SameSite=Strict",
 			}, "\r\n") + "\r\n\r\n",
@@ -75,8 +75,8 @@ func TestWriteResponseHead(t *testing.T) {
 			}),
 			expected: strings.Join([]string{
 				"HTTP/1.1 403 Forbidden",
-				"Set-Cookie: user=john123",
 				"Set-Cookie: auth=token456",
+				"Set-Cookie: user=john123",
 			}, "\r\n") + "\r\n\r\n",
 		},
 		{

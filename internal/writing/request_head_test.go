@@ -56,8 +56,8 @@ func TestWriteRequestHead(t *testing.T) {
 			}),
 			expected: strings.Join([]string{
 				"PUT /update HTTP/1.1",
-				"Content-Type: application/json",
 				"Authorization: Bearer token",
+				"Content-Type: application/json",
 			}, "\r\n") + "\r\n\r\n",
 		},
 		{
@@ -77,15 +77,15 @@ func TestWriteRequestHead(t *testing.T) {
 			method: specs.HttpMethodPut,
 			url:    specs.MustParseUrl("/all?one=two&three=four"),
 			header: specs.NewHeader(func(header *specs.Header) {
-				header.Set("Content-Type", "application/json")
 				header.Set("Authorization", "Bearer token")
+				header.Set("Content-Type", "application/json")
 				header.SetCookieValue("session_id", "abc123")
 				header.SetCookieValue("user_id", "4049")
 			}),
 			expected: strings.Join([]string{
 				"PUT /all?one=two&three=four HTTP/1.1",
-				"Content-Type: application/json",
 				"Authorization: Bearer token",
+				"Content-Type: application/json",
 				"Cookie: session_id=abc123; user_id=4049",
 			}, "\r\n") + "\r\n\r\n",
 		},

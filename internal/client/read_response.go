@@ -34,14 +34,14 @@ func ReadResponse(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 		return nil, specs.NewOpError(readResponseOp, "unsupported http version %d.%d", protoMajor, protoMinor)
 	}
 
-	headers, cookies, err := parsing.ParseHeaders(ctx, reader, lineLimit, totalLimit)
+	header, err := parsing.ParseHeaders(ctx, reader, lineLimit, totalLimit)
 	if err != nil {
 		return nil, err
 	}
 
 	resp := &HttpClientResponse{
 		status: status,
-		header: specs.NewReadOnlyHeader(headers, cookies),
+		header: header,
 	}
 
 	return resp, nil

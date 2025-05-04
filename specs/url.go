@@ -2,8 +2,7 @@ package specs
 
 import (
 	"errors"
-	"fmt"
-	netur "net/url"
+	"github.com/oesand/giglet/internal/utils"
 	"strconv"
 	"strings"
 )
@@ -22,220 +21,218 @@ func MustParseUrl(url string) *Url {
 }
 
 func MustParseUrlQuery(url string, query Query) *Url {
-	ur, err := ParseUrlQuery(url, query)
+	obj, err := ParseUrl(url)
 	if err != nil {
 		panic(err)
 	}
-	return ur
-}
-
-func ParseUrlQuery(url string, query Query) (*Url, error) {
-	ur, err := ParseUrl(url)
-	if err != nil {
-		return nil, err
+	if obj.Query == nil || len(obj.Query) == 0 {
+		obj.Query = query
 	}
-	ur.SetQueryParams(query)
-	return ur, nil
+	return obj
 }
 
 func ParseUrl(url string) (*Url, error) {
 	obj := &Url{}
-	if len(url) > 0 {
-		var i, mark, step int
-		end := len(url) - 1
-		for i <= end {
-			switch url[i] {
-			case '/':
-				if step != 5 {
-					if i != 0 {
-						switch step { // read as 'path'
-						default:
-							return nil, ErrorInvalidUrlFormat
+	if len(url) == 0 {
+		return obj, nil
+	}
 
-						case 0, 3: // from 'host'
-							if i-mark < 1 {
-								return nil, ErrorInvalidUrlFormat
-							}
-							obj.Host = url[mark:i]
+	if url == "/" {
+		obj.Path = url
+		return obj, nil
+	}
 
-						case 4: // from 'port'
-							err := obj.setPort(url[mark:i])
-							if err != nil {
-								return nil, fmt.Errorf("url/port: %s", err)
-							}
-						}
-					}
+	if rest, raw, ok := strings.Cut(url, "#"); ok {
+		url = rest
+		if hash, err := utils.UnEscapeUrl(raw, utils.EscapingFragment); err == nil {
+			obj.Hash = hash
+		} else {
+			obj.Hash = raw
+		}
+	}
 
-					step = 5 // goto 'path'
-					mark = i
-				}
-			case ':':
-				if i < 1 { // ensure host:port format
+	if url == "" {
+		return obj, nil
+	}
+
+	// Scheme[0], Username[1], Password[2], Host[3], Port[4], Path[5], Query[6], Hash[7]
+	const (
+		stepScheme = iota
+		stepHost
+		stepPort
+		stepPath
+		stepQuery
+	)
+
+	var mark, step int
+	end := len(url) - 1
+
+	if url[0] == '/' {
+		step = stepPath
+	}
+
+	for i := 0; i < len(url); i++ {
+		c := url[i]
+		switch {
+		// invalid control character
+		case c < ' ' || c == 0x7f:
+			return nil, ErrorInvalidUrlFormat
+
+		// read 'scheme'
+		case step == stepScheme && i+2 <= end && url[i] == ':' && url[i+1] == '/':
+			if 0 == i || i+2 == end || url[i+2] != '/' {
+				return nil, ErrorInvalidUrlFormat
+			}
+
+			step = stepHost // goto 'host'
+			obj.Scheme = url[mark:i]
+			i += 2
+			mark = i + 1
+			continue
+
+		// read 'host'
+		case step == stepScheme || step == stepHost:
+			switch {
+			case i == end:
+				if len(url)-mark < 1 {
 					return nil, ErrorInvalidUrlFormat
-				} else if i+2 < end &&
-					url[i+1] == '/' && url[i+2] == '/' { // read as 'scheme'
+				}
+				obj.Host = url[mark:]
+				step = stepHost // exit with ends on 'host'
 
-					if step != 0 && i < 1 {
+			default:
+				// invalid 'scheme' characters - force 'host'
+				if step == stepScheme &&
+					!('a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' ||
+						(i > 0 && ('0' <= c && c <= '9' || c == '+' || c == '-' || c == '.'))) {
+
+					step = stepHost // goto 'host'
+				}
+
+				switch c {
+				case ':':
+					if url[mark] == '[' && url[i-1] != ']' {
+						continue
+					}
+					step = stepPort // goto 'port'
+				case '/':
+					step = stepPath // goto 'path'
+				case '?':
+					step = stepQuery // goto 'query'
+				case '@': // read as 'user'
+					if i-mark <= 1 || obj.Username != "" {
 						return nil, ErrorInvalidUrlFormat
 					}
-					step = 3 // goto 'host'
-					obj.Scheme = url[:i]
-					i += 3
-					mark = i
+					obj.Username = url[mark:i]
+					step = stepHost // goto 'host'
+					mark = i + 1
 					continue
-				} else if step == 0 || step == 3 { // read as 'host'
-					if i-mark < 1 {
-						return nil, ErrorInvalidUrlFormat
-					}
-					obj.Host = url[mark:i]
-					step = 4 // goto 'port'
-					i++
-					mark = i
+				default:
 					continue
 				}
-			case '@':
-				if step == 4 { // from 'port', read as 'password'
-					if i-mark < 1 {
+
+				if i-mark < 1 {
+					return nil, ErrorInvalidUrlFormat
+				}
+
+				obj.Host = url[mark:i]
+				mark = i + 1
+			}
+
+		// read 'port'
+		case step == stepPort:
+			switch {
+			case i == end:
+				if len(url)-mark < 1 {
+					return nil, ErrorInvalidUrlFormat
+				}
+				if !obj.setPort(url[mark:]) {
+					return nil, ErrorInvalidUrlFormat
+				}
+			default:
+				switch c {
+				case '/':
+					step = stepPath // goto 'path'
+				case '?':
+					step = stepQuery // goto 'query'
+				case '@': // read as 'user & pass'
+					if i-mark <= 1 || obj.Username != "" || obj.Password != "" {
 						return nil, ErrorInvalidUrlFormat
 					}
 					obj.Username = obj.Host
 					obj.Password = url[mark:i]
 					obj.Host = ""
-					step = 3 // goto 'host'
-					i++
-					mark = i
+					step = stepHost // goto 'host'
+					mark = i + 1
 					continue
-				} else {
-					return nil, ErrorInvalidUrlFormat
-				}
-			case '?':
-				if step == 5 { // from 'path', read as 'query'
-					if i-mark < 1 {
-						return nil, ErrorInvalidUrlFormat
-					}
-					obj.Path = url[mark:i]
-					step = 6 // goto 'query'
-					i++
-					mark = i
-					continue
-				} else {
-					return nil, ErrorInvalidUrlFormat
-				}
-			case '#':
-				switch step { // read as 'hash'
 				default:
-					return nil, ErrorInvalidUrlFormat
-
-				case 5: // from 'path'
-					obj.Path = url[mark:i]
-
-				case 6: // from 'query'
-					obj.query = url[mark:i]
+					continue
 				}
-				step = 7 // goto 'hash'
-				i++
-				mark = i
-				continue
-			}
-			i++
-		}
-		if end-mark < 0 && step != 6 {
-			return nil, ErrorInvalidUrlFormat
-		}
-		switch step {
-		case 0, 3: // host
-			obj.Host = url[mark:]
-
-		case 4: // port
-			err := obj.setPort(url[mark:])
-			if err != nil {
-				return nil, fmt.Errorf("url/port: %s", err)
+				if i-mark < 1 {
+					return nil, ErrorInvalidUrlFormat
+				}
+				if !obj.setPort(url[mark:i]) {
+					return nil, ErrorInvalidUrlFormat
+				}
+				mark = i + 1
 			}
 
-		case 5: // path
-			obj.Path = url[mark:]
+		// read 'path'
+		case step == stepPath:
+			switch {
+			case i == end || c == '?':
+				if mark != 0 {
+					mark--
+				}
 
-		case 6: // query
-			obj.query = url[mark:]
+				var text string
+				if i == end {
+					text = url[mark:]
+				} else {
+					text = url[mark:i]
+				}
 
-		case 7: // hash
-			obj.Hash = url[mark:]
+				if text == "/" {
+					obj.Path = text
+				} else if path, err := utils.UnEscapeUrl(text, utils.EscapingPath); err == nil {
+					obj.Path = path
+				} else {
+					obj.Path = text
+				}
 
-		default:
-			return nil, ErrorInvalidUrlFormat
+				mark = i + 1
+				if c == '?' {
+					step = stepQuery // goto 'query'
+				}
+			}
+
+		// read 'query'
+		case step == stepQuery:
+			switch {
+			case i == end:
+				obj.Query = ParseQuery(url[mark:])
+			}
 		}
 	}
-	if len(obj.Path) > 2 {
-		if path, err := netur.PathUnescape(obj.Path); err == nil {
-			obj.Path = path
-		}
-	}
+
 	return obj, nil
 }
 
 type Url struct {
 	Scheme, Username, Password,
-	Host, Path, query, Hash string
+	Host, Path, Hash string
 	Port uint16
 
-	queryParams Query
+	Query Query
 }
 
-func (url *Url) setPort(val string) error {
+func (url *Url) setPort(val string) bool {
 	num, err := strconv.ParseUint(val, 10, 16)
 	if err != nil {
-		return err
+		return false
 	}
 	url.Port = uint16(num)
-	return nil
-}
-
-func (url *Url) SecondLevelHost() string {
-	if len(url.Host) < 3 {
-		return ""
-	}
-	host := url.Host
-	var topLevelMark bool
-	for i := len(host) - 1; i >= 0; i-- {
-		switch {
-		case host[i] != '.':
-			continue
-		case !topLevelMark:
-			topLevelMark = true
-		case topLevelMark:
-			return host[i+1:]
-		}
-	}
-	return host
-}
-
-func (url *Url) Query() string {
-	return url.query
-}
-
-func (url *Url) SetQuery(query string) {
-	url.queryParams = nil
-	url.query = query
-}
-
-func (url *Url) SetQueryParams(query Query) {
-	url.queryParams = query
-	if query != nil {
-		url.query = query.String()
-	}
-}
-
-func (url *Url) QueryParams() Query {
-	if url.queryParams != nil {
-		return url.queryParams
-	} else if len(url.query) == 0 {
-		url.queryParams = Query{}
-		return url.queryParams
-	}
-
-	query := ParseQuery(url.query)
-	url.queryParams = query
-	return query
+	return true
 }
 
 func (url *Url) String() string {
@@ -246,10 +243,12 @@ func (url *Url) String() string {
 			builder.WriteString(url.Scheme)
 			builder.WriteString("://")
 		}
-		if len(url.Username) > 0 && len(url.Password) > 0 {
-			builder.WriteString(url.Username)
-			builder.WriteByte(':')
-			builder.WriteString(url.Password)
+		if len(url.Username) > 0 {
+			builder.WriteString(utils.EscapeUrl(url.Username, utils.EscapingUserPassword))
+			if len(url.Password) > 0 {
+				builder.WriteByte(':')
+				builder.WriteString(utils.EscapeUrl(url.Password, utils.EscapingUserPassword))
+			}
 			builder.WriteByte('@')
 		}
 
@@ -262,16 +261,17 @@ func (url *Url) String() string {
 	}
 
 	if len(url.Path) > 0 {
-		builder.WriteString(netur.PathEscape(url.Path))
+		builder.WriteString(utils.EscapeUrl(url.Path, utils.EscapingPath))
+	}
 
-		if len(url.query) > 0 {
-			builder.WriteByte('?')
-			builder.WriteString(url.query)
-		}
-		if len(url.Hash) > 0 {
-			builder.WriteByte('#')
-			builder.WriteString(url.Hash)
-		}
+	if url.Query != nil || len(url.Query) > 0 {
+		builder.WriteByte('?')
+		builder.WriteString(url.Query.String())
+	}
+
+	if len(url.Hash) > 0 {
+		builder.WriteByte('#')
+		builder.WriteString(utils.EscapeUrl(url.Hash, utils.EscapingFragment))
 	}
 
 	return builder.String()

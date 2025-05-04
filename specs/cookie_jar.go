@@ -3,6 +3,7 @@ package specs
 import (
 	"fmt"
 	"github.com/oesand/giglet/internal/utils"
+	"golang.org/x/net/publicsuffix"
 	"iter"
 	"sync"
 	"time"
@@ -19,8 +20,8 @@ type CookieJar struct {
 }
 
 func (jar *CookieJar) GetCookie(url *Url, name string) *Cookie {
-	host := url.SecondLevelHost()
-	if host == "" {
+	host, err := publicsuffix.EffectiveTLDPlusOne(url.Host)
+	if err != nil {
 		return nil
 	}
 
@@ -47,8 +48,8 @@ func (jar *CookieJar) Cookies(url *Url) iter.Seq[Cookie] {
 	jar.mutex.RLock()
 	defer jar.mutex.RUnlock()
 
-	host := url.SecondLevelHost()
-	if host == "" {
+	host, err := publicsuffix.EffectiveTLDPlusOne(url.Host)
+	if err != nil {
 		return utils.EmptyIterSeq[Cookie]()
 	}
 
@@ -63,7 +64,7 @@ func (jar *CookieJar) Cookies(url *Url) iter.Seq[Cookie] {
 
 		now := time.Now()
 		expired := []string{}
-		for subkey, cookie := range sub {
+		for subkey, cookie := range utils.IterMapSorted(sub) {
 			if cookie.IsExpired(now) {
 				expired = append(expired, subkey)
 				continue
@@ -87,8 +88,8 @@ func (jar *CookieJar) SetCookie(url *Url, cookie Cookie) {
 		return
 	}
 
-	host := url.SecondLevelHost()
-	if host == "" {
+	host, err := publicsuffix.EffectiveTLDPlusOne(url.Host)
+	if err != nil {
 		return
 	}
 
@@ -122,8 +123,8 @@ func (jar *CookieJar) SetCookiesIter(url *Url, cookies iter.Seq[Cookie]) {
 	jar.mutex.Lock()
 	defer jar.mutex.Unlock()
 
-	key := url.SecondLevelHost()
-	if key == "" {
+	key, err := publicsuffix.EffectiveTLDPlusOne(url.Host)
+	if err != nil {
 		return
 	}
 

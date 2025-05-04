@@ -1,6 +1,7 @@
 package specs
 
 import (
+	"github.com/oesand/giglet/internal/utils"
 	"net/url"
 	"strings"
 )
@@ -44,13 +45,13 @@ func (q Query) String() string {
 		return ""
 	}
 	var buf strings.Builder
-	for k, v := range q {
+	for k, v := range utils.IterMapSorted(q) {
 		if buf.Len() > 0 {
 			buf.WriteByte('&')
 		}
-		buf.WriteString(url.QueryEscape(k))
+		buf.WriteString(utils.EscapeUrl(k, utils.EscapingQueryComponent))
 		buf.WriteByte('=')
-		buf.WriteString(url.QueryEscape(v))
+		buf.WriteString(utils.EscapeUrl(v, utils.EscapingQueryComponent))
 	}
 	return buf.String()
 }

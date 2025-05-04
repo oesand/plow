@@ -3,7 +3,6 @@ package specs
 import (
 	"github.com/oesand/giglet/internal/utils"
 	"iter"
-	"maps"
 )
 
 func NewHeader(configure ...func(header *Header)) *Header {
@@ -28,10 +27,16 @@ func (header *Header) Any() bool {
 }
 
 func (header *Header) Get(name string) string {
+	value, _ := header.headers[name]
+	return value
+}
+
+func (header *Header) TryGet(name string) (string, bool) {
 	if header.Any() {
-		return header.headers[name]
+		value, has := header.headers[name]
+		return value, has
 	}
-	return ""
+	return "", false
 }
 
 func (header *Header) Has(name string) bool {
@@ -62,7 +67,7 @@ func (header *Header) All() iter.Seq2[string, string] {
 	if !header.Any() {
 		return utils.EmptyIterSeq2[string, string]()
 	}
-	return maps.All(header.headers)
+	return utils.IterMapSorted(header.headers)
 }
 
 func (header *Header) HasCookies() bool {
@@ -82,7 +87,6 @@ func (header *Header) HasCookie(name string) bool {
 		return has
 	}
 	return false
-
 }
 
 func (header *Header) DelCookie(name string) {
@@ -114,9 +118,20 @@ func (header *Header) Cookies() iter.Seq[Cookie] {
 		return utils.EmptyIterSeq[Cookie]()
 	}
 
+	if utils.IsNotTesting {
+		return func(yield func(Cookie) bool) {
+			for _, cookie := range header.cookies {
+				if !yield(*cookie) {
+					break
+				}
+			}
+		}
+	}
+
+	keys := utils.IterKeysSorted(header.cookies)
 	return func(yield func(Cookie) bool) {
-		for _, cookie := range header.cookies {
-			if !yield(*cookie) {
+		for k := range keys {
+			if !yield(*header.cookies[k]) {
 				break
 			}
 		}

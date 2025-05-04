@@ -16,10 +16,10 @@ var (
 	errorCancelled = &specs.GigletError{Err: errors.New("cancelled")}
 )
 
-func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, totalLimit int64) (map[string]string, map[string]*specs.Cookie, error) {
+func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, totalLimit int64) (*specs.Header, error) {
 	select {
 	case <-ctx.Done():
-		return nil, nil, errorCancelled
+		return nil, errorCancelled
 	default:
 	}
 
@@ -29,41 +29,40 @@ func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 	if buf, err := reader.Peek(1); err == nil && (buf[0] == ' ' || buf[0] == '\t') {
 		line, err := utils.ReadBufferLine(reader, lineLimit)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		totalLen = int64(len(line))
 		if totalLimit > 0 && totalLen > lineLimit {
-			return nil, nil, &specs.GigletError{
+			return nil, &specs.GigletError{
 				Op:  "headers/server",
 				Err: fmt.Errorf("too large (%d > %d)", totalLimit, lineLimit),
 			}
 		}
 
-		return nil, nil, &specs.GigletError{
+		return nil, &specs.GigletError{
 			Op:  "headers/server",
 			Err: fmt.Errorf("malformed header initial line: %s", line),
 		}
 	}
 
-	headers := map[string]string{}
-	cookies := map[string]*specs.Cookie{}
+	header := specs.NewHeader()
 
 	var key, value []byte
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, nil, errorCancelled
+			return nil, errorCancelled
 		default:
 		}
 
 		line, err := utils.ReadBufferLine(reader, lineLimit)
 		if err != nil {
-			return nil, nil, &specs.GigletError{
+			return nil, &specs.GigletError{
 				Op:  "headers/server",
 				Err: err,
 			}
 		} else if len(line) == 0 {
-			return headers, cookies, nil
+			return header, nil
 		}
 
 		line = bytes.TrimLeft(line, " ")
@@ -72,7 +71,7 @@ func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 		}
 		totalLen += int64(len(line))
 		if totalLimit > 0 && totalLen > lineLimit {
-			return nil, nil, &specs.GigletError{
+			return nil, &specs.GigletError{
 				Op:  "headers/server",
 				Err: fmt.Errorf("too large (%d > %d)", totalLimit, lineLimit),
 			}
@@ -93,18 +92,15 @@ func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 		if httpguts.ValidHeaderFieldName(headerKey) && httpguts.ValidHeaderFieldValue(headerVal) {
 			if headerKey == "Cookie" {
 				for cookieKey, cookieVal := range ParseCookieHeader(headerVal) {
-					cookies[cookieKey] = &specs.Cookie{
-						Name:  cookieKey,
-						Value: cookieVal,
-					}
+					header.SetCookieValue(cookieKey, cookieVal)
 				}
 			} else if headerKey == "Set-Cookie" {
 				cookie := ParseSetCookieHeader(headerVal)
 				if cookie != nil {
-					cookies[cookie.Name] = cookie
+					header.SetCookie(*cookie)
 				}
 			} else {
-				headers[headerKey] = headerVal
+				header.Set(headerKey, headerVal)
 			}
 		}
 		key, value = nil, nil

@@ -7,7 +7,7 @@ import (
 
 type HttpClientResponse struct {
 	status specs.StatusCode
-	header *specs.ReadOnlyHeader
+	header *specs.Header
 	body   io.ReadCloser
 }
 
@@ -15,7 +15,7 @@ func (resp *HttpClientResponse) StatusCode() specs.StatusCode {
 	return resp.status
 }
 
-func (resp *HttpClientResponse) Header() *specs.ReadOnlyHeader {
+func (resp *HttpClientResponse) Header() *specs.Header {
 	return resp.header
 }
 

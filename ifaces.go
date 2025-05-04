@@ -17,7 +17,7 @@ type Request interface {
 
 	Method() specs.HttpMethod
 	Url() *specs.Url
-	Header() *specs.ReadOnlyHeader
+	Header() *specs.Header
 
 	Body() io.Reader
 }
@@ -36,7 +36,7 @@ type ClientRequest interface {
 
 type ClientResponse interface {
 	StatusCode() specs.StatusCode
-	Header() *specs.ReadOnlyHeader
+	Header() *specs.Header
 	Body() io.ReadCloser
 }
 

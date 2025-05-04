@@ -22,7 +22,7 @@ type HttpRequest struct {
 	protoMajor, protoMinor uint16
 	method                 specs.HttpMethod
 	url                    *specs.Url
-	header                 *specs.ReadOnlyHeader
+	header                 *specs.Header
 
 	body io.Reader
 }
@@ -59,7 +59,7 @@ func (req *HttpRequest) Url() *specs.Url {
 	return req.url
 }
 
-func (req *HttpRequest) Header() *specs.ReadOnlyHeader {
+func (req *HttpRequest) Header() *specs.Header {
 	return req.header
 }
 

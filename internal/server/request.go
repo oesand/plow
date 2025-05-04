@@ -11,6 +11,8 @@ import (
 	"golang.org/x/net/http/httpguts"
 	"io"
 	"net"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -90,13 +92,15 @@ func ReadRequest(
 		readTimeout: timeout,
 	}
 
-	headers, cookies, err := parsing.ParseHeaders(ctx, reader, lineLimit, totalLimit)
+	header, err := parsing.ParseHeaders(ctx, reader, lineLimit, totalLimit)
 	if err != nil {
 		return nil, err
 	}
 
+	req.header = header
+
 	if protoMajor > 1 || (protoMajor == 1 && protoMinor >= 0) { // [FEATURE]: Add chunked transfer
-		if raw := headers["Transfer-Encoding"]; len(raw) > 0 { // !strings.EqualFold(raw, "chunked")
+		if raw, has := header.TryGet("Transfer-Encoding"); has && len(raw) > 0 && !strings.EqualFold(raw, "chunked") {
 			return nil, ResponseErrUnsupportedEncoding
 		}
 	}
@@ -108,22 +112,22 @@ func ReadRequest(
 	//	GET http://www.google.com/index.html HTTP/1.1
 	//	Host: doesnt matter
 	// the same. In the second case, any Host line is ignored.
-	if host, has := headers["Host"]; has && len(host) > 0 && !httpguts.ValidHostHeader(host) {
-		headers["Host"] = req.url.Host
+	if host, has := header.TryGet("Host"); has && len(host) > 0 && !httpguts.ValidHostHeader(host) {
+		header.Set("Host", req.url.Host)
 	}
 
 	// RFC 7234, section 5.4: Should treat
-	if pragma, has := headers["Pragma"]; has && pragma == "no-cache" {
-		headers["Cache-Control"] = "no-cache"
+	if pragma, has := header.TryGet("Pragma"); has && pragma == "no-cache" {
+		header.Set("Cache-Control", "no-cache")
 	}
-
-	req.header = specs.NewReadOnlyHeader(headers, cookies)
 
 	if req.method.IsPostable() {
-		contentLength := req.Header().ContentLength()
-		if contentLength > 0 {
-			req.body = io.LimitReader(reader, contentLength)
+		if raw, has := header.TryGet("Content-Length"); has && len(raw) > 0 {
+			if contentLength, err := strconv.ParseInt(raw, 10, 64); err != nil {
+				req.body = io.LimitReader(reader, contentLength)
+			}
 		}
 	}
+
 	return req, nil
 }

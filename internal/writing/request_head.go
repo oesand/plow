@@ -10,12 +10,15 @@ func WriteRequestHead(writer io.Writer, method specs.HttpMethod, url *specs.Url,
 	// Headline
 	buf := bytes.NewBufferString(string(method))
 	buf.WriteRune(' ')
-	buf.WriteString(url.Path)
+	if path := url.Path; path != "" {
+		buf.WriteString(path)
+	} else {
+		buf.WriteByte('/')
+	}
 
-	query := url.Query()
-	if query != "" {
+	if query := url.Query; query != nil && len(query) > 0 {
 		buf.WriteRune('?')
-		buf.WriteString(query)
+		buf.WriteString(query.String())
 	}
 
 	buf.WriteRune(' ')

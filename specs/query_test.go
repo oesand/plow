@@ -129,7 +129,7 @@ func TestQuery_String(t *testing.T) {
 				"key":        "value with spaces",
 				"anotherKey": "hello, world",
 			},
-			expected: "key=value+with+spaces&anotherKey=hello%2C+world",
+			expected: "anotherKey=hello%2C+world&key=value+with+spaces",
 		},
 		{
 			name: "Query with URL-encoded values",
@@ -137,7 +137,7 @@ func TestQuery_String(t *testing.T) {
 				"key":        "value%20with%20spaces",
 				"anotherKey": "hello%2Cworld",
 			},
-			expected: "key=value%2520with%2520spaces&anotherKey=hello%252Cworld",
+			expected: "anotherKey=hello%252Cworld&key=value%2520with%2520spaces",
 		},
 		{
 			name: "Query with empty string values",

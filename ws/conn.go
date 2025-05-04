@@ -56,7 +56,7 @@ func (conn *WebSocketConn) Url() *specs.Url {
 	return conn.request.Url()
 }
 
-func (conn *WebSocketConn) Header() *specs.ReadOnlyHeader {
+func (conn *WebSocketConn) Header() *specs.Header {
 	return conn.request.Header()
 }
 
