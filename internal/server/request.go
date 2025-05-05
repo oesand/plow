@@ -9,18 +9,12 @@ import (
 	"github.com/oesand/giglet/internal/utils"
 	"github.com/oesand/giglet/specs"
 	"golang.org/x/net/http/httpguts"
-	"io"
 	"net"
-	"strconv"
 	"strings"
 	"time"
 )
 
 var (
-	ResponseErrUnsupportedEncoding = &ErrorResponse{
-		Code: specs.StatusCodeUnprocessableEntity,
-		Text: "unsupported transfer encoding",
-	}
 	ErrorCancelled = &specs.GigletError{Err: errors.New("cancelled")}
 )
 
@@ -40,6 +34,12 @@ func ReadRequest(
 
 	line, err := utils.ReadBufferLine(reader, lineLimit)
 	if err != nil {
+		if errors.Is(err, utils.ErrorTooLarge) {
+			return nil, &ErrorResponse{
+				Code: specs.StatusCodeRequestHeaderFieldsTooLarge,
+				Text: "http: too large header",
+			}
+		}
 		return nil, err
 	}
 
@@ -82,26 +82,23 @@ func ReadRequest(
 	default:
 	}
 
-	req := &HttpRequest{
-		method:     method,
-		protoMajor: protoMajor,
-		protoMinor: protoMinor,
-		url:        url,
-		context:    ctx,
-
-		readTimeout: timeout,
-	}
-
 	header, err := parsing.ParseHeaders(ctx, reader, lineLimit, totalLimit)
 	if err != nil {
+		if errors.Is(err, parsing.ErrorTooLarge) {
+			return nil, &ErrorResponse{
+				Code: specs.StatusCodeRequestHeaderFieldsTooLarge,
+				Text: "http: too large header",
+			}
+		}
 		return nil, err
 	}
 
-	req.header = header
-
 	if protoMajor > 1 || (protoMajor == 1 && protoMinor >= 0) { // [FEATURE]: Add chunked transfer
 		if raw, has := header.TryGet("Transfer-Encoding"); has && len(raw) > 0 && !strings.EqualFold(raw, "chunked") {
-			return nil, ResponseErrUnsupportedEncoding
+			return nil, &ErrorResponse{
+				Code: specs.StatusCodeNotImplemented,
+				Text: "http: unsupported transfer encoding",
+			}
 		}
 	}
 
@@ -113,7 +110,7 @@ func ReadRequest(
 	//	Host: doesnt matter
 	// the same. In the second case, any Host line is ignored.
 	if host, has := header.TryGet("Host"); has && len(host) > 0 && !httpguts.ValidHostHeader(host) {
-		header.Set("Host", req.url.Host)
+		header.Set("Host", url.Host)
 	}
 
 	// RFC 7234, section 5.4: Should treat
@@ -121,12 +118,34 @@ func ReadRequest(
 		header.Set("Cache-Control", "no-cache")
 	}
 
-	if req.method.IsPostable() {
-		if raw, has := header.TryGet("Content-Length"); has && len(raw) > 0 {
-			if contentLength, err := strconv.ParseInt(raw, 10, 64); err != nil {
-				req.body = io.LimitReader(reader, contentLength)
+	var selectedEncoding specs.ContentEncoding
+
+	if encoding, has := header.TryGet("Accept-Encoding"); has {
+		variants := strings.Split(encoding, ",")
+		for _, variant := range variants {
+			if strings.Contains(strings.ToLower(variant), "gzip") {
+				selectedEncoding = specs.GzipContentEncoding
+				break
 			}
 		}
+		if selectedEncoding == specs.UnknownContentEncoding {
+			return nil, &ErrorResponse{
+				Code: specs.StatusCodeNotImplemented,
+				Text: "http: has not supported encoding from accept-encoding, supported: gzip",
+			}
+		}
+	}
+
+	req := &HttpRequest{
+		method:     method,
+		protoMajor: protoMajor,
+		protoMinor: protoMinor,
+		url:        url,
+		context:    ctx,
+		header:     header,
+
+		readTimeout:      timeout,
+		SelectedEncoding: selectedEncoding,
 	}
 
 	return req, nil

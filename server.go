@@ -68,18 +68,6 @@ func (server *Server) logger() *log.Logger {
 	return log.Default()
 }
 
-func (server *Server) applyReadTimeout(conn net.Conn) {
-	if server.ReadTimeout > 0 {
-		conn.SetReadDeadline(time.Now().Add(server.ReadTimeout))
-	}
-}
-
-func (server *Server) applyWriteTimeout(conn net.Conn) {
-	if server.WriteTimeout > 0 {
-		conn.SetWriteDeadline(time.Now().Add(server.WriteTimeout))
-	}
-}
-
 func (server *Server) HasNextProto(proto string) bool {
 	server.mutex.Lock()
 	defer server.mutex.Unlock()

@@ -48,7 +48,7 @@ func NewBufferRequest(method specs.HttpMethod, url *specs.Url, buffer []byte) Cl
 		clientRequest: clientRequest{
 			method: method,
 			url:    url,
-			header: &specs.Header{},
+			header: specs.NewHeader(),
 		},
 		buffer: buffer,
 	}
@@ -78,7 +78,7 @@ func NewStreamRequest(method specs.HttpMethod, url *specs.Url, stream io.Reader)
 		clientRequest: clientRequest{
 			method: method,
 			url:    url,
-			header: &specs.Header{},
+			header: specs.NewHeader(),
 		},
 		stream: stream,
 	}

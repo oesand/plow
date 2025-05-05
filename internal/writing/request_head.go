@@ -34,7 +34,7 @@ func WriteRequestHead(writer io.Writer, method specs.HttpMethod, url *specs.Url,
 		buf.Write(rawCrlf)
 	}
 
-	if header.HasCookies() {
+	if header.AnyCookies() {
 		buf.Write(rawCookie)
 
 		firstCookie := true

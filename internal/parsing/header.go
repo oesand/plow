@@ -13,13 +13,17 @@ import (
 
 var (
 	rawColon       = []byte(": ")
-	errorCancelled = &specs.GigletError{Err: errors.New("cancelled")}
+	ErrorCancelled = &specs.GigletError{Err: errors.New("cancelled")}
+	ErrorTooLarge  = &specs.GigletError{
+		Op:  "reading",
+		Err: errors.New("too large"),
+	}
 )
 
 func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, totalLimit int64) (*specs.Header, error) {
 	select {
 	case <-ctx.Done():
-		return nil, errorCancelled
+		return nil, ErrorCancelled
 	default:
 	}
 
@@ -33,10 +37,7 @@ func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 		}
 		totalLen = int64(len(line))
 		if totalLimit > 0 && totalLen > lineLimit {
-			return nil, &specs.GigletError{
-				Op:  "headers/server",
-				Err: fmt.Errorf("too large (%d > %d)", totalLimit, lineLimit),
-			}
+			return nil, ErrorTooLarge
 		}
 
 		return nil, &specs.GigletError{
@@ -51,7 +52,7 @@ func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, errorCancelled
+			return nil, ErrorCancelled
 		default:
 		}
 
@@ -71,10 +72,7 @@ func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 		}
 		totalLen += int64(len(line))
 		if totalLimit > 0 && totalLen > lineLimit {
-			return nil, &specs.GigletError{
-				Op:  "headers/server",
-				Err: fmt.Errorf("too large (%d > %d)", totalLimit, lineLimit),
-			}
+			return nil, ErrorTooLarge
 		}
 
 		if value != nil && len(value) != 0 && line[0] == '\t' {

@@ -27,13 +27,13 @@ func (header *Header) Any() bool {
 }
 
 func (header *Header) Get(name string) string {
-	value, _ := header.headers[name]
+	value, _ := header.TryGet(name)
 	return value
 }
 
 func (header *Header) TryGet(name string) (string, bool) {
 	if header.Any() {
-		value, has := header.headers[name]
+		value, has := header.headers[utils.TitleCase(name)]
 		return value, has
 	}
 	return "", false
@@ -41,7 +41,7 @@ func (header *Header) TryGet(name string) (string, bool) {
 
 func (header *Header) Has(name string) bool {
 	if header.Any() {
-		_, has := header.headers[name]
+		_, has := header.headers[utils.TitleCase(name)]
 		return has
 	}
 	return false
@@ -70,19 +70,19 @@ func (header *Header) All() iter.Seq2[string, string] {
 	return utils.IterMapSorted(header.headers)
 }
 
-func (header *Header) HasCookies() bool {
+func (header *Header) AnyCookies() bool {
 	return header.cookies != nil && len(header.cookies) > 0
 }
 
 func (header *Header) GetCookie(name string) *Cookie {
-	if header.HasCookies() {
+	if header.AnyCookies() {
 		return header.cookies[name]
 	}
 	return nil
 }
 
 func (header *Header) HasCookie(name string) bool {
-	if header.HasCookies() {
+	if header.AnyCookies() {
 		_, has := header.cookies[name]
 		return has
 	}
@@ -90,7 +90,7 @@ func (header *Header) HasCookie(name string) bool {
 }
 
 func (header *Header) DelCookie(name string) {
-	if header.HasCookies() {
+	if header.AnyCookies() {
 		delete(header.cookies, utils.TitleCase(name))
 	}
 }
@@ -114,7 +114,7 @@ func (header *Header) SetCookieValue(name, value string) {
 }
 
 func (header *Header) Cookies() iter.Seq[Cookie] {
-	if !header.HasCookies() {
+	if !header.AnyCookies() {
 		return utils.EmptyIterSeq[Cookie]()
 	}
 

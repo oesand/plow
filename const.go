@@ -8,7 +8,6 @@ import (
 	"github.com/oesand/giglet/internal/server"
 	"github.com/oesand/giglet/specs"
 	"net"
-	"time"
 )
 
 type Handler func(request Request) Response
@@ -23,7 +22,6 @@ var (
 	ErrorCancelled = &specs.GigletError{Err: errors.New("cancelled")}
 
 	zeroDialer         net.Dialer
-	zeroTime           time.Time
 	httpV1NextProtoTLS = "http/1.1"
 
 	responseErrDowngradeHTTPS = &server.ErrorResponse{

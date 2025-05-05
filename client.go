@@ -96,18 +96,6 @@ func (cln *Client) Make(request ClientRequest) (ClientResponse, error) {
 	return cln.MakeContext(context.Background(), request)
 }
 
-func (cln *Client) applyReadTimeout(conn net.Conn) {
-	if cln.ReadTimeout > 0 {
-		conn.SetReadDeadline(time.Now().Add(cln.ReadTimeout))
-	}
-}
-
-func (cln *Client) applyWriteTimeout(conn net.Conn) {
-	if cln.WriteTimeout > 0 {
-		conn.SetWriteDeadline(time.Now().Add(cln.WriteTimeout))
-	}
-}
-
 func (cln *Client) MakeContext(ctx context.Context, request ClientRequest) (ClientResponse, error) {
 	if ctx == nil {
 		return nil, validationErr("nil Context pointer")
@@ -272,7 +260,9 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url *specs
 		header.Set("Connection", "close")
 	}
 
-	cln.applyWriteTimeout(conn)
+	if cln.WriteTimeout > 0 {
+		conn.SetWriteDeadline(time.Now().Add(cln.WriteTimeout))
+	}
 	_, err = writing.WriteRequestHead(conn, method, url, header)
 
 	if err != nil {
@@ -291,14 +281,18 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url *specs
 			return nil, err
 		}
 	}
-	conn.SetWriteDeadline(zeroTime)
 
-	cln.applyReadTimeout(conn)
+	if cln.WriteTimeout > 0 {
+		conn.SetWriteDeadline(time.Time{})
+	}
+
+	if cln.ReadTimeout > 0 {
+		conn.SetReadDeadline(time.Now().Add(cln.ReadTimeout))
+	}
 	headerReader := bufioReaderPool.Get(conn)
 	resp, err := client.ReadResponse(ctx, headerReader, cln.ReadLineMaxLength, cln.HeadMaxLength)
 	extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
 	bufioReaderPool.Put(headerReader)
-	conn.SetReadDeadline(zeroTime)
 
 	if err != nil {
 		if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
@@ -319,12 +313,7 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url *specs
 
 		switch resp.Header().Get("Transfer-Encoding") {
 		case "chunked":
-			chunkedBuf := bufioReaderPool.Get(reader)
-			reader = httputil.NewChunkedReader(chunkedBuf)
-			chainedClosers = append(chainedClosers, utils.Closer(func() error {
-				bufioReaderPool.Put(chunkedBuf)
-				return nil
-			}))
+			reader = httputil.NewChunkedReader(reader)
 		}
 
 		switch resp.Header().Get("Content-Encoding") {
@@ -342,7 +331,6 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url *specs
 
 		resp.SetBody(
 			utils.ReadClose(func(p []byte) (int, error) {
-				cln.applyReadTimeout(conn)
 				return reader.Read(p)
 			}, func() error {
 				for closer := range utils.ReverseIter(chainedClosers) {

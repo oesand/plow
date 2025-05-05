@@ -24,7 +24,8 @@ type HttpRequest struct {
 	url                    *specs.Url
 	header                 *specs.Header
 
-	body io.Reader
+	BodyReader       io.Reader
+	SelectedEncoding specs.ContentEncoding
 }
 
 func (req *HttpRequest) Context() context.Context {
@@ -64,5 +65,5 @@ func (req *HttpRequest) Header() *specs.Header {
 }
 
 func (req *HttpRequest) Body() io.Reader {
-	return req.body
+	return req.BodyReader
 }

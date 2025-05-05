@@ -1,6 +1,8 @@
 package giglet
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -8,8 +10,11 @@ import (
 	"github.com/oesand/giglet/internal/utils"
 	"github.com/oesand/giglet/internal/writing"
 	"github.com/oesand/giglet/specs"
+	"io"
 	"net"
+	"net/http/httputil"
 	"runtime"
+	"strconv"
 	"time"
 )
 
@@ -95,8 +100,6 @@ func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 		return
 	}
 
-	reader := bufioReaderPool.Get(conn)
-
 	defer func() {
 		if err := recover(); err != nil && err != ErrorCancelled {
 			const size = 64 << 10
@@ -109,16 +112,21 @@ func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 		}
 
 		conn.Close()
-		bufioReaderPool.Put(reader)
 	}()
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	for {
-		req, err := server.ReadRequest(ctx, conn, reader, srv.ReadTimeout, srv.ReadLineMaxLength, srv.HeadMaxLength)
+		headerReader := bufioReaderPool.Get(conn)
+
+		if srv.ReadTimeout > 0 {
+			conn.SetReadDeadline(time.Now().Add(srv.ReadTimeout))
+		}
+		req, err := server.ReadRequest(ctx, conn, headerReader, srv.ReadTimeout, srv.ReadLineMaxLength, srv.HeadMaxLength)
 
 		if err != nil {
+			bufioReaderPool.Put(headerReader)
 			if srv.Debug {
 				srv.logger().Printf("http: read request error from %s: %v", conn.RemoteAddr(), err)
 			}
@@ -130,8 +138,28 @@ func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 					responseErrNotProcessable.Write(conn)
 				}
 			}
-			conn.Close()
 			break
+		}
+
+		bufioReaderPool.Put(headerReader)
+
+		if req.Method().IsPostable() {
+			extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
+
+			reader := io.MultiReader(bytes.NewReader(extraBuffered), conn)
+
+			if encoding, has := req.Header().TryGet("Transfer-Encoding"); has {
+				switch encoding {
+				case "chunked":
+					reader = httputil.NewChunkedReader(reader)
+				}
+			} else if raw, has := req.Header().TryGet("Content-Length"); has && len(raw) > 0 {
+				if contentLength, err := strconv.ParseInt(raw, 10, 64); err != nil {
+					reader = io.LimitReader(reader, contentLength)
+				}
+			}
+
+			req.BodyReader = reader
 		}
 
 		resp := handler(req)
@@ -147,9 +175,13 @@ func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 			header = &specs.Header{}
 		}
 
+		if srv.ReadTimeout > 0 {
+			conn.SetReadDeadline(time.Time{})
+		}
+
 		if len(srv.ServerName) > 0 {
 			header.Set("Server", srv.ServerName)
-		} else if len(DefaultServerName) > 0 {
+		} else {
 			header.Set("Server", DefaultServerName)
 		}
 
@@ -165,23 +197,50 @@ func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 
 		protoMajor, protoMinor := req.ProtoVersion()
 		isHttp11 := protoMajor == 1 && protoMinor == 1
+
+		if srv.WriteTimeout > 0 {
+			conn.SetWriteDeadline(time.Now().Add(srv.WriteTimeout))
+		}
 		_, err = writing.WriteResponseHead(conn, isHttp11, code, header)
+
 		if err != nil {
 			if srv.Debug {
-				srv.logger().Printf("http: send response head to %s error: %v", conn.RemoteAddr(), err)
+				srv.logger().Printf("http: error to send head to '%s': %v", conn.RemoteAddr(), err)
 			}
 			break
 		}
+
 		if req.Method().CanHaveResponseBody() && writable != nil {
-			if srv.WriteTimeout > 0 {
-				srv.applyWriteTimeout(conn)
+			var writer io.Writer = conn
+			var encodingCloser io.Closer
+
+			switch req.SelectedEncoding {
+			case specs.GzipContentEncoding:
+				gzw := gzip.NewWriter(writer)
+				writer = gzw
+				encodingCloser = gzw
 			}
 
-			writable.WriteBody(conn)
-
-			if srv.WriteTimeout > 0 {
-				conn.SetWriteDeadline(zeroTime)
+			if req.SelectedEncoding != specs.UnknownContentEncoding {
+				resp.Header().Set("Content-Encoding", string(req.SelectedEncoding))
 			}
+
+			err = writable.WriteBody(writer)
+
+			if err == nil && encodingCloser != nil {
+				err = encodingCloser.Close()
+			}
+			if err != nil {
+				if srv.Debug {
+					srv.logger().Printf("http: error to send body to '%s': %v", conn.RemoteAddr(), err)
+				}
+				break
+			}
+
+		}
+
+		if srv.WriteTimeout > 0 {
+			conn.SetWriteDeadline(time.Time{})
 		}
 
 		select {
