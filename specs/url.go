@@ -1,16 +1,10 @@
 package specs
 
 import (
-	"errors"
-	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal/utils/plain"
 	"strconv"
 	"strings"
 )
-
-var ErrorInvalidUrlFormat = &GigletError{
-	Op:  GigletOp("url"),
-	Err: errors.New("invalid format"),
-}
 
 func MustParseUrl(url string) *Url {
 	ur, err := ParseUrl(url)
@@ -44,7 +38,7 @@ func ParseUrl(url string) (*Url, error) {
 
 	if rest, raw, ok := strings.Cut(url, "#"); ok {
 		url = rest
-		if hash, err := utils.UnEscapeUrl(raw, utils.EscapingFragment); err == nil {
+		if hash, err := plain.UnEscapeUrl(raw, plain.EscapingFragment); err == nil {
 			obj.Hash = hash
 		} else {
 			obj.Hash = raw
@@ -76,12 +70,12 @@ func ParseUrl(url string) (*Url, error) {
 		switch {
 		// invalid control character
 		case c < ' ' || c == 0x7f:
-			return nil, ErrorInvalidUrlFormat
+			return nil, ErrInvalidFormat
 
 		// read 'scheme'
 		case step == stepScheme && i+2 <= end && url[i] == ':' && url[i+1] == '/':
 			if 0 == i || i+2 == end || url[i+2] != '/' {
-				return nil, ErrorInvalidUrlFormat
+				return nil, ErrInvalidFormat
 			}
 
 			step = stepHost // goto 'host'
@@ -95,7 +89,7 @@ func ParseUrl(url string) (*Url, error) {
 			switch {
 			case i == end:
 				if len(url)-mark < 1 {
-					return nil, ErrorInvalidUrlFormat
+					return nil, ErrInvalidFormat
 				}
 				obj.Host = url[mark:]
 				step = stepHost // exit with ends on 'host'
@@ -121,7 +115,7 @@ func ParseUrl(url string) (*Url, error) {
 					step = stepQuery // goto 'query'
 				case '@': // read as 'user'
 					if i-mark <= 1 || obj.Username != "" {
-						return nil, ErrorInvalidUrlFormat
+						return nil, ErrInvalidFormat
 					}
 					obj.Username = url[mark:i]
 					step = stepHost // goto 'host'
@@ -132,7 +126,7 @@ func ParseUrl(url string) (*Url, error) {
 				}
 
 				if i-mark < 1 {
-					return nil, ErrorInvalidUrlFormat
+					return nil, ErrInvalidFormat
 				}
 
 				obj.Host = url[mark:i]
@@ -144,10 +138,10 @@ func ParseUrl(url string) (*Url, error) {
 			switch {
 			case i == end:
 				if len(url)-mark < 1 {
-					return nil, ErrorInvalidUrlFormat
+					return nil, ErrInvalidFormat
 				}
 				if !obj.setPort(url[mark:]) {
-					return nil, ErrorInvalidUrlFormat
+					return nil, ErrInvalidFormat
 				}
 			default:
 				switch c {
@@ -157,7 +151,7 @@ func ParseUrl(url string) (*Url, error) {
 					step = stepQuery // goto 'query'
 				case '@': // read as 'user & pass'
 					if i-mark <= 1 || obj.Username != "" || obj.Password != "" {
-						return nil, ErrorInvalidUrlFormat
+						return nil, ErrInvalidFormat
 					}
 					obj.Username = obj.Host
 					obj.Password = url[mark:i]
@@ -169,10 +163,10 @@ func ParseUrl(url string) (*Url, error) {
 					continue
 				}
 				if i-mark < 1 {
-					return nil, ErrorInvalidUrlFormat
+					return nil, ErrInvalidFormat
 				}
 				if !obj.setPort(url[mark:i]) {
-					return nil, ErrorInvalidUrlFormat
+					return nil, ErrInvalidFormat
 				}
 				mark = i + 1
 			}
@@ -194,7 +188,7 @@ func ParseUrl(url string) (*Url, error) {
 
 				if text == "/" {
 					obj.Path = text
-				} else if path, err := utils.UnEscapeUrl(text, utils.EscapingPath); err == nil {
+				} else if path, err := plain.UnEscapeUrl(text, plain.EscapingPath); err == nil {
 					obj.Path = path
 				} else {
 					obj.Path = text
@@ -244,10 +238,10 @@ func (url *Url) String() string {
 			builder.WriteString("://")
 		}
 		if len(url.Username) > 0 {
-			builder.WriteString(utils.EscapeUrl(url.Username, utils.EscapingUserPassword))
+			builder.WriteString(plain.EscapeUrl(url.Username, plain.EscapingUserPassword))
 			if len(url.Password) > 0 {
 				builder.WriteByte(':')
-				builder.WriteString(utils.EscapeUrl(url.Password, utils.EscapingUserPassword))
+				builder.WriteString(plain.EscapeUrl(url.Password, plain.EscapingUserPassword))
 			}
 			builder.WriteByte('@')
 		}
@@ -261,7 +255,7 @@ func (url *Url) String() string {
 	}
 
 	if len(url.Path) > 0 {
-		builder.WriteString(utils.EscapeUrl(url.Path, utils.EscapingPath))
+		builder.WriteString(plain.EscapeUrl(url.Path, plain.EscapingPath))
 	}
 
 	if url.Query != nil || len(url.Query) > 0 {
@@ -271,7 +265,7 @@ func (url *Url) String() string {
 
 	if len(url.Hash) > 0 {
 		builder.WriteByte('#')
-		builder.WriteString(utils.EscapeUrl(url.Hash, utils.EscapingFragment))
+		builder.WriteString(plain.EscapeUrl(url.Hash, plain.EscapingFragment))
 	}
 
 	return builder.String()

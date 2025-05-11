@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"github.com/oesand/giglet/internal/client"
 	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal/utils/stream"
 	"github.com/oesand/giglet/internal/writing"
 	"github.com/oesand/giglet/specs"
-	"golang.org/x/net/http/httpguts"
 	"io"
 	"net"
 	"net/http/httputil"
@@ -122,7 +122,7 @@ func (cln *Client) MakeContext(ctx context.Context, request ClientRequest) (Clie
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, ErrorCancelled
+			return nil, specs.ErrCancelled
 		default:
 		}
 
@@ -150,10 +150,7 @@ func (cln *Client) MakeContext(ctx context.Context, request ClientRequest) (Clie
 			baseUrl := *url
 			url, err = specs.ParseUrl(location)
 			if err != nil {
-				return nil, &specs.GigletError{
-					Op:  "serve/redirect",
-					Err: err,
-				}
+				return nil, specs.NewOpError("redirect", "cannot parse location header url")
 			}
 			request.Header().Set("Host", url.Host)
 			if url.Scheme == "" {
@@ -190,7 +187,7 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url *specs
 	conn, err := zeroDialer.DialContext(ctx, "tcp", address)
 	if err != nil {
 		return nil, &specs.GigletError{
-			Op:  "dialing",
+			Op:  "dial",
 			Err: err,
 		}
 	}
@@ -224,10 +221,11 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url *specs
 	}
 
 	if cln.Jar != nil {
-		for cookie := range cln.Jar.Cookies(url) {
+		for cookie := range cln.Jar.Cookies(url.Host) {
 			header.SetCookie(cookie)
 		}
 	}
+
 	if cln.Header != nil {
 		for name, value := range cln.Header.All() {
 			header.Set(name, value)
@@ -254,9 +252,7 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url *specs
 
 	// If protocol switcher
 	if header.Get("Connection") != "close" &&
-		!(header.Has("Upgrade") &&
-			httpguts.HeaderValuesContainsToken(
-				strings.Split(header.Get("Connection"), ", "), "Upgrade")) {
+		!(header.Has("Upgrade") && strings.EqualFold(header.Get("Connection"), "Upgrade")) {
 		header.Set("Connection", "close")
 	}
 
@@ -289,25 +285,26 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url *specs
 	if cln.ReadTimeout > 0 {
 		conn.SetReadDeadline(time.Now().Add(cln.ReadTimeout))
 	}
-	headerReader := bufioReaderPool.Get(conn)
+	headerReader := stream.DefaultBufioReaderPool.Get(conn)
+	defer stream.DefaultBufioReaderPool.Put(headerReader)
+
 	resp, err := client.ReadResponse(ctx, headerReader, cln.ReadLineMaxLength, cln.HeadMaxLength)
-	extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
-	bufioReaderPool.Put(headerReader)
 
 	if err != nil {
 		if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
-			return nil, specs.NewOpError("client/response", "timeout")
+			return nil, specs.NewOpError("read", "timeout")
 		}
 		return nil, err
 	}
 
 	if cln.Jar != nil {
-		cln.Jar.SetCookiesIter(url, resp.Header().Cookies())
+		cln.Jar.SetCookiesIter(url.Host, resp.Header().Cookies())
 	}
 
 	if !method.CanHaveResponseBody() || !resp.StatusCode().HaveBody() || resp.StatusCode().IsRedirect() {
 		_ = conn.Close()
 	} else {
+		extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
 		reader := io.MultiReader(bytes.NewReader(extraBuffered), conn)
 		chainedClosers := []io.Closer{conn}
 
@@ -321,7 +318,7 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url *specs
 			gzreader, err := gzip.NewReader(reader)
 			if err != nil {
 				return nil, &specs.GigletError{
-					Op:  "read/encoding/gzip",
+					Op:  "encoding/gzip",
 					Err: fmt.Errorf("gzip: %s", err),
 				}
 			}
@@ -330,7 +327,7 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url *specs
 		}
 
 		resp.SetBody(
-			utils.ReadClose(func(p []byte) (int, error) {
+			stream.ReadClose(func(p []byte) (int, error) {
 				return reader.Read(p)
 			}, func() error {
 				for closer := range utils.ReverseIter(chainedClosers) {

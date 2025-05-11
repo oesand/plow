@@ -182,6 +182,26 @@ func TestParseUrl(t *testing.T) {
 			},
 		},
 		{
+			name: "IPv6 with path with special characters and query",
+			raw:  "http://[2001:db8::1]/file/a%20b?query=value",
+			want: &Url{
+				Scheme: "http",
+				Host:   "[2001:db8::1]",
+				Path:   "/file/a b",
+				Query:  Query{"query": "value"},
+			},
+		},
+		{
+			name: "IPv6 with port and path with special characters",
+			raw:  "http://[2001:db8::1]:8080/file/%C3%BC",
+			want: &Url{
+				Scheme: "http",
+				Host:   "[2001:db8::1]",
+				Port:   8080,
+				Path:   "/file/ü",
+			},
+		},
+		{
 			name: "Full URL with all fields",
 			raw:  "https://user:pass@my.example.com:8443/api/v1?key=value#anchor",
 			want: &Url{

@@ -46,7 +46,7 @@ func WriteResponseHead(writer io.Writer, is11 bool, code specs.StatusCode, heade
 	i, err := buf.WriteTo(writer)
 	if err != nil {
 		return -1, &specs.GigletError{
-			Op:  writeHeadOp,
+			Op:  "write",
 			Err: err,
 		}
 	}

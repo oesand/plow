@@ -1,11 +1,12 @@
-package utils
+package stream
 
 import (
+	"github.com/oesand/giglet/internal/utils"
 	"io"
 	"sync/atomic"
 )
 
-func Closer(closing Closing) io.Closer {
+func Closer(closing utils.Closing) io.Closer {
 	return &closer{
 		closing: closing,
 	}
@@ -13,13 +14,13 @@ func Closer(closing Closing) io.Closer {
 
 type closer struct {
 	closed  atomic.Bool
-	closing Closing
+	closing utils.Closing
 }
 
 func (comb *closer) Close() error {
 	if comb.closing != nil {
 		if comb.closed.Load() {
-			return ErrorAlreadyClosed
+			return utils.ErrorAlreadyClosed
 		}
 		defer comb.closed.Store(true)
 		return comb.closing()

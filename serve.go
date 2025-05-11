@@ -7,24 +7,21 @@ import (
 	"crypto/tls"
 	"errors"
 	"github.com/oesand/giglet/internal/server"
-	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal/utils/stream"
 	"github.com/oesand/giglet/internal/writing"
 	"github.com/oesand/giglet/specs"
 	"io"
 	"net"
 	"net/http/httputil"
-	"runtime"
 	"strconv"
 	"time"
 )
-
-var ErrorServerShutdown = specs.NewOpError("server", "shutdown")
 
 func (server *Server) Serve(listener net.Listener) error {
 	if listener == nil {
 		return validationErr("nil listener")
 	} else if server.isShuttingdown.Load() {
-		return ErrorServerShutdown
+		return specs.ErrCancelled
 	}
 
 	server.listenerTrack.Add(1)
@@ -36,7 +33,7 @@ func (server *Server) Serve(listener net.Listener) error {
 			if err == nil {
 				conn.Close()
 			}
-			return ErrorServerShutdown
+			return specs.ErrCancelled
 		}
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
@@ -58,8 +55,6 @@ func (server *Server) Serve(listener net.Listener) error {
 	}
 }
 
-var bufioReaderPool utils.BufioReaderPool
-
 func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 	if srv.Handler == nil || srv.isShuttingdown.Load() {
 		conn.Close()
@@ -78,7 +73,7 @@ func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 				return
 			}
 			if srv.Debug {
-				srv.logger().Printf("giglet: tls handshake error from %s: %v", conn.RemoteAddr(), err)
+				srv.logger().Printf("giglet: tls handshake error from '%s': %v", conn.RemoteAddr(), err)
 			}
 			return
 		}
@@ -101,14 +96,8 @@ func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 	}
 
 	defer func() {
-		if err := recover(); err != nil && err != ErrorCancelled {
-			const size = 64 << 10
-			buf := make([]byte, size)
-			buf = buf[:runtime.Stack(buf, false)]
-
-			if srv.Debug {
-				srv.logger().Printf("http: panic serving %v: %v\n%s", conn.RemoteAddr(), err, buf)
-			}
+		if err := recover(); err != nil && err != specs.ErrCancelled && srv.Debug {
+			srv.logger().Printf("giglet: panic serving from '%s': %v", conn.RemoteAddr(), err)
 		}
 
 		conn.Close()
@@ -118,7 +107,7 @@ func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 	defer cancel()
 
 	for {
-		headerReader := bufioReaderPool.Get(conn)
+		headerReader := stream.DefaultBufioReaderPool.Get(conn)
 
 		if srv.ReadTimeout > 0 {
 			conn.SetReadDeadline(time.Now().Add(srv.ReadTimeout))
@@ -126,11 +115,11 @@ func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 		req, err := server.ReadRequest(ctx, conn, headerReader, srv.ReadTimeout, srv.ReadLineMaxLength, srv.HeadMaxLength)
 
 		if err != nil {
-			bufioReaderPool.Put(headerReader)
+			stream.DefaultBufioReaderPool.Put(headerReader)
 			if srv.Debug {
-				srv.logger().Printf("http: read request error from %s: %v", conn.RemoteAddr(), err)
+				srv.logger().Printf("giglet: read request error from '%s': %v", conn.RemoteAddr(), err)
 			}
-			if !utils.IsCommonNetReadError(err) {
+			if !stream.IsCommonNetReadError(err) {
 				var respErr *server.ErrorResponse
 				if errors.As(err, &respErr) {
 					respErr.Write(conn)
@@ -140,8 +129,6 @@ func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 			}
 			break
 		}
-
-		bufioReaderPool.Put(headerReader)
 
 		if req.Method().IsPostable() {
 			extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
@@ -161,6 +148,8 @@ func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 
 			req.BodyReader = reader
 		}
+
+		stream.DefaultBufioReaderPool.Put(headerReader)
 
 		resp := handler(req)
 		var header *specs.Header
@@ -205,7 +194,7 @@ func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 
 		if err != nil {
 			if srv.Debug {
-				srv.logger().Printf("http: error to send head to '%s': %v", conn.RemoteAddr(), err)
+				srv.logger().Printf("giglet: error to send head to '%s': %v", conn.RemoteAddr(), err)
 			}
 			break
 		}
@@ -232,7 +221,7 @@ func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 			}
 			if err != nil {
 				if srv.Debug {
-					srv.logger().Printf("http: error to send body to '%s': %v", conn.RemoteAddr(), err)
+					srv.logger().Printf("giglet: error to send body to '%s': %v", conn.RemoteAddr(), err)
 				}
 				break
 			}

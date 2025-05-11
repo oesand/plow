@@ -12,59 +12,143 @@ import (
 	"time"
 )
 
-type WebSocketConf struct {
+type Conf struct {
 	EnableCompression bool
 	ReadLimit         int64
 }
 
-type WebSocketConn struct {
+type wsConn struct {
 	request giglet.Request
 	conn    net.Conn
 	reader  bufio.Reader
-	conf    WebSocketConf
+	conf    Conf
 	dead    bool
-
-	compressionWriter   func(io.WriteCloser) io.WriteCloser
-	decompressionReader func(io.Reader) io.ReadCloser
 }
 
-func (conn *WebSocketConn) Context() any {
+func (conn *wsConn) Context() context.Context {
 	return conn.request.Context()
 }
 
-func (conn *WebSocketConn) WithContext(context context.Context) {
+func (conn *wsConn) WithContext(context context.Context) {
 	conn.request.WithContext(context)
 }
 
-func (conn *WebSocketConn) SetDeadline(t time.Time) error {
-	return conn.conn.SetDeadline(t)
-}
-
-func (conn *WebSocketConn) SetReadDeadline(t time.Time) error {
-	return conn.conn.SetReadDeadline(t)
-}
-
-func (conn *WebSocketConn) SetWriteDeadline(t time.Time) error {
-	return conn.conn.SetWriteDeadline(t)
-}
-
-func (conn *WebSocketConn) RemoteAddr() net.Addr {
+func (conn *wsConn) RemoteAddr() net.Addr {
 	return conn.request.RemoteAddr()
 }
 
-func (conn *WebSocketConn) Url() *specs.Url {
+func (conn *wsConn) Url() *specs.Url {
 	return conn.request.Url()
 }
 
-func (conn *WebSocketConn) Header() *specs.Header {
+func (conn *wsConn) Header() *specs.Header {
 	return conn.request.Header()
 }
 
-func (conn *WebSocketConn) Alive() bool {
+func (conn *wsConn) Alive() bool {
 	return !conn.dead
 }
 
-func (conn *WebSocketConn) WriteFrame(frameType WebSocketFrame, payload []byte) (err error) {
+func (conn *wsConn) SetDeadline(t time.Time) error {
+	return conn.conn.SetDeadline(t)
+}
+
+func (conn *wsConn) SetReadDeadline(t time.Time) error {
+	return conn.conn.SetReadDeadline(t)
+}
+
+func (conn *wsConn) SetWriteDeadline(t time.Time) error {
+	return conn.conn.SetWriteDeadline(t)
+}
+
+func (conn *wsConn) Read() (frame WebSocketFrame, buf []byte, err error) {
+	if conn.dead {
+		frame, err = WebSocketCloseFrame, ErrorWebsocketClosed
+		return
+	}
+
+	buf, err = conn.peekReader(2)
+	if err != nil {
+		return
+	}
+
+	frame = WebSocketFrame(buf[0] & 0xf)
+	final := buf[0]&websocketFinalBit != 0
+	//rsv1 := buf[0]&websocketRsv1Bit != 0
+	//rsv2 := buf[0]&websocketRsv2Bit != 0
+	//rsv3 := buf[0]&websocketRsv3Bit != 0
+	// mask := buf[1] & websocketMaskBit != 0
+
+	remaining := int64(buf[1] & 0x7f)
+
+	//if rsv1 {
+	//	if conn.decompressionReader == nil {
+	//		err = ErrorWebsocketNoRsV1
+	//		return
+	//	}
+	//} else if rsv2 {
+	//	conn.WriteCloseFrame(WebSocketCloseUnsupportedData)
+	//	err = ErrorWebsocketNoRsV2
+	//	return
+	//} else if rsv3 {
+	//	conn.WriteCloseFrame(WebSocketCloseUnsupportedData)
+	//	err = ErrorWebsocketNoRsV3
+	//	return
+	//}
+
+	if frame.IsService() {
+		if remaining > websocketMaxServiceFramePayloadSize || !final {
+			if frame != WebSocketCloseFrame {
+				conn.Close(WebSocketCloseMessageTooBig)
+			}
+			err = ErrorWebsocketFrameSizeExceed
+		}
+		return
+	} else if !frame.IsContent() {
+		conn.Close(WebSocketCloseInvalidPayloadData)
+		err = ErrorWebsocketInvalidFrameType
+		return
+	}
+
+	// Next handle only Content Frames...
+
+	switch remaining {
+	case 126:
+		buf, err = conn.peekReader(2)
+		if err != nil {
+			return
+		}
+		remaining = int64(binary.BigEndian.Uint16(buf))
+
+	case 127:
+		buf, err = conn.peekReader(8)
+		if err != nil {
+			return
+		}
+		remaining = int64(binary.BigEndian.Uint32(buf))
+	}
+
+	if conn.conf.ReadLimit > 0 && remaining > conn.conf.ReadLimit {
+		conn.Close(WebSocketCloseMessageTooBig)
+		frame, err = WebSocketCloseFrame, ErrorWebsocketClosed
+		return
+	}
+
+	//if frame.IsContent() && conn.decompressionReader != nil {
+	//	var source io.Reader = conn.conn
+	//	if conn.conf.ReadLimit > 0 {
+	//		source = io.LimitReader(source, conn.conf.ReadLimit)
+	//	}
+	//	reader := conn.decompressionReader(source)
+	//	_, err = reader.Read(buf[:])
+	//	reader.Close()
+	//} else {
+	//	buf, err = conn.peekReader(int(remaining))
+	//}
+	return
+}
+
+func (conn *wsConn) Write(frameType WebSocketFrame, payload []byte) (err error) {
 	if conn.dead {
 		return ErrorWebsocketClosed
 	} else if !frameType.IsService() && !frameType.IsContent() {
@@ -92,13 +176,13 @@ func (conn *WebSocketConn) WriteFrame(frameType WebSocketFrame, payload []byte) 
 	buf = append(buf, byte(length))
 	buf = append(buf, payload...)
 
-	if frameType.IsContent() && conn.compressionWriter != nil {
-		writer := conn.compressionWriter(conn.conn)
-		_, err = writer.Write(buf)
-		writer.Close()
-	} else {
-		_, err = conn.conn.Write(buf)
-	}
+	//if frameType.IsContent() && conn.compressionWriter != nil {
+	//	writer := conn.compressionWriter(conn.conn)
+	//	_, err = writer.Write(buf)
+	//	writer.Close()
+	//} else {
+	//	_, err = conn.conn.Write(buf)
+	//}
 
 	if err == io.EOF {
 		conn.dead = true
@@ -110,7 +194,7 @@ func (conn *WebSocketConn) WriteFrame(frameType WebSocketFrame, payload []byte) 
 	return err
 }
 
-func (conn *WebSocketConn) WriteCloseFrame(reason WebSocketClose) error {
+func (conn *wsConn) Close(reason WebSocketClose) error {
 	if conn.dead {
 		return ErrorWebsocketClosed
 	}
@@ -119,10 +203,10 @@ func (conn *WebSocketConn) WriteCloseFrame(reason WebSocketClose) error {
 	payload = append(payload, ' ')
 	payload = append(payload, reason.Detail()...)
 
-	return conn.WriteFrame(WebSocketCloseFrame, payload)
+	return conn.Write(WebSocketCloseFrame, payload)
 }
 
-func (conn *WebSocketConn) peekReader(n int) (buf []byte, err error) {
+func (conn *wsConn) peekReader(n int) (buf []byte, err error) {
 	buf, err = conn.reader.Peek(n)
 	if err == io.EOF {
 		err = ErrorWebsocketClosed
@@ -130,92 +214,5 @@ func (conn *WebSocketConn) peekReader(n int) (buf []byte, err error) {
 		return
 	}
 	conn.reader.Discard(n)
-	return
-}
-
-func (conn *WebSocketConn) ReadFrame() (frame WebSocketFrame, buf []byte, err error) {
-	if conn.dead {
-		frame, err = WebSocketCloseFrame, ErrorWebsocketClosed
-		return
-	}
-
-	buf, err = conn.peekReader(2)
-	if err != nil {
-		return
-	}
-
-	frame = WebSocketFrame(buf[0] & 0xf)
-	final := buf[0]&websocketFinalBit != 0
-	rsv1 := buf[0]&websocketRsv1Bit != 0
-	rsv2 := buf[0]&websocketRsv2Bit != 0
-	rsv3 := buf[0]&websocketRsv3Bit != 0
-	// mask := buf[1] & websocketMaskBit != 0
-
-	remaining := int64(buf[1] & 0x7f)
-
-	if rsv1 {
-		if conn.decompressionReader == nil {
-			err = ErrorWebsocketNoRsV1
-			return
-		}
-	} else if rsv2 {
-		conn.WriteCloseFrame(WebSocketCloseUnsupportedData)
-		err = ErrorWebsocketNoRsV2
-		return
-	} else if rsv3 {
-		conn.WriteCloseFrame(WebSocketCloseUnsupportedData)
-		err = ErrorWebsocketNoRsV3
-		return
-	}
-
-	if frame.IsService() {
-		if remaining > websocketMaxServiceFramePayloadSize || !final {
-			if frame != WebSocketCloseFrame {
-				conn.WriteCloseFrame(WebSocketCloseMessageTooBig)
-			}
-			err = ErrorWebsocketFrameSizeExceed
-		}
-		return
-	} else if !frame.IsContent() {
-		conn.WriteCloseFrame(WebSocketCloseInvalidPayloadData)
-		err = ErrorWebsocketInvalidFrameType
-		return
-	}
-
-	// Next handle only Content Frames...
-
-	switch remaining {
-	case 126:
-		buf, err = conn.peekReader(2)
-		if err != nil {
-			return
-		}
-		remaining = int64(binary.BigEndian.Uint16(buf))
-
-	case 127:
-		buf, err = conn.peekReader(8)
-		if err != nil {
-			return
-		}
-		remaining = int64(binary.BigEndian.Uint32(buf))
-	}
-
-	if conn.conf.ReadLimit > 0 && remaining > conn.conf.ReadLimit {
-		conn.WriteCloseFrame(WebSocketCloseMessageTooBig)
-		frame, err = WebSocketCloseFrame, ErrorWebsocketClosed
-		return
-	}
-
-	if frame.IsContent() && conn.decompressionReader != nil {
-		var source io.Reader = conn.conn
-		if conn.conf.ReadLimit > 0 {
-			source = io.LimitReader(source, conn.conf.ReadLimit)
-		}
-		reader := conn.decompressionReader(source)
-		_, err = reader.Read(buf[:])
-		reader.Close()
-	} else {
-		buf, err = conn.peekReader(int(remaining))
-	}
 	return
 }

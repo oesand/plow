@@ -7,15 +7,12 @@ import (
 	"fmt"
 	"github.com/oesand/giglet/internal/parsing"
 	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal/utils/stream"
 	"github.com/oesand/giglet/specs"
 	"golang.org/x/net/http/httpguts"
 	"net"
 	"strings"
 	"time"
-)
-
-var (
-	ErrorCancelled = &specs.GigletError{Err: errors.New("cancelled")}
 )
 
 func ReadRequest(
@@ -24,7 +21,7 @@ func ReadRequest(
 ) (*HttpRequest, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ErrorCancelled
+		return nil, specs.ErrCancelled
 	default:
 	}
 
@@ -32,7 +29,7 @@ func ReadRequest(
 		conn.SetReadDeadline(time.Now().Add(timeout))
 	}
 
-	line, err := utils.ReadBufferLine(reader, lineLimit)
+	line, err := stream.ReadBufferLine(reader, lineLimit)
 	if err != nil {
 		if errors.Is(err, utils.ErrorTooLarge) {
 			return nil, &ErrorResponse{
@@ -78,13 +75,13 @@ func ReadRequest(
 
 	select {
 	case <-ctx.Done():
-		return nil, ErrorCancelled
+		return nil, specs.ErrCancelled
 	default:
 	}
 
 	header, err := parsing.ParseHeaders(ctx, reader, lineLimit, totalLimit)
 	if err != nil {
-		if errors.Is(err, parsing.ErrorTooLarge) {
+		if errors.Is(err, specs.ErrTooLarge) {
 			return nil, &ErrorResponse{
 				Code: specs.StatusCodeRequestHeaderFieldsTooLarge,
 				Text: "http: too large header",

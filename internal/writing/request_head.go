@@ -57,7 +57,7 @@ func WriteRequestHead(writer io.Writer, method specs.HttpMethod, url *specs.Url,
 	i, err := buf.WriteTo(writer)
 	if err != nil {
 		return -1, &specs.GigletError{
-			Op:  writeHeadOp,
+			Op:  "write",
 			Err: err,
 		}
 	}

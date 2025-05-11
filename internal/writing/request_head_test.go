@@ -95,7 +95,7 @@ func TestWriteRequestHead(t *testing.T) {
 			writer := &bytes.Buffer{}
 			_, _ = WriteRequestHead(writer, tt.method, tt.url, tt.header)
 			if gotText := writer.String(); tt.expected != gotText {
-				t.Errorf("WriteRequestHead() got text = \n%v\nexpected:\n%v", gotText, tt.expected)
+				t.Errorf("WriteRequestHead() got plain = \n%v\nexpected:\n%v", gotText, tt.expected)
 			}
 		})
 	}

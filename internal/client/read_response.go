@@ -3,35 +3,29 @@ package client
 import (
 	"bufio"
 	"context"
-	"errors"
 	"github.com/oesand/giglet/internal/parsing"
-	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal/utils/stream"
 	"github.com/oesand/giglet/specs"
-)
-
-var (
-	readResponseOp = specs.GigletOp("client/response")
-	ErrorCancelled = &specs.GigletError{Err: errors.New("cancelled")}
 )
 
 func ReadResponse(ctx context.Context, reader *bufio.Reader, lineLimit int64, totalLimit int64) (*HttpClientResponse, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ErrorCancelled
+		return nil, specs.ErrCancelled
 	default:
 	}
 
-	line, err := utils.ReadBufferLine(reader, 128)
+	line, err := stream.ReadBufferLine(reader, 128)
 	if err != nil {
 		return nil, err
 	}
 
 	status, protoMajor, protoMinor, ok := parsing.ParseServerResponseHeadline(line)
 	if !ok {
-		return nil, specs.NewOpError(readResponseOp, "invalid headline")
+		return nil, specs.NewOpError("parsing", "invalid headline")
 	}
 	if protoMajor != 1 {
-		return nil, specs.NewOpError(readResponseOp, "unsupported http version %d.%d", protoMajor, protoMinor)
+		return nil, specs.NewOpError("parsing", "unsupported http version %d.%d", protoMajor, protoMinor)
 	}
 
 	header, err := parsing.ParseHeaders(ctx, reader, lineLimit, totalLimit)

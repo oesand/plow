@@ -3,7 +3,6 @@ package giglet
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"github.com/oesand/giglet/internal/server"
 	"github.com/oesand/giglet/specs"
@@ -19,8 +18,6 @@ type EventHandler func()
 const DefaultServerName = "giglet"
 
 var (
-	ErrorCancelled = &specs.GigletError{Err: errors.New("cancelled")}
-
 	zeroDialer         net.Dialer
 	httpV1NextProtoTLS = "http/1.1"
 

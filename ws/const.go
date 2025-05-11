@@ -3,27 +3,10 @@ package ws
 import (
 	"crypto/sha1"
 	"encoding/base64"
-	"github.com/oesand/giglet/internal/utils"
 	"github.com/oesand/giglet/specs"
 )
 
-type WebSocketHandler func(conn *WebSocketConn)
-
-var bufioReaderPool utils.BufioReaderPool
-
-var (
-	websocketAcceptBaseKey = []byte("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
-
-	websocketOp = specs.GigletOp("websocket")
-
-	ErrorWebsocketInvalidFrameType = specs.NewOpError(websocketOp, "invalid frame type")
-	ErrorWebsocketFrameSizeExceed  = specs.NewOpError(websocketOp, "frame size exceed")
-	ErrorWebsocketClosed           = specs.NewOpError(websocketOp, "closed")
-
-	ErrorWebsocketNoRsV1 = specs.NewOpError(websocketOp, "rsv1 not implemented")
-	ErrorWebsocketNoRsV2 = specs.NewOpError(websocketOp, "rsv2 not implemented")
-	ErrorWebsocketNoRsV3 = specs.NewOpError(websocketOp, "rsv3 not implemented")
-)
+type Handler func(conn Conn)
 
 const (
 	// Frame header byte 0 bits from Section 5.2 of RFC 6455
@@ -43,9 +26,23 @@ const (
 	// defaultCompressionLevel = 1
 )
 
-func ComputeWebSocketAcceptKey(challengeKey string) string {
+var (
+	acceptBaseKey = []byte("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
+
+	websocketOp = specs.GigletOp("ws")
+
+	ErrorWebsocketInvalidFrameType = specs.NewOpError(websocketOp, "invalid frame type")
+	ErrorWebsocketFrameSizeExceed  = specs.NewOpError(websocketOp, "frame size exceed")
+	ErrorWebsocketClosed           = specs.NewOpError(websocketOp, "closed")
+
+	ErrorWebsocketNoRsV1 = specs.NewOpError(websocketOp, "rsv1 not implemented")
+	ErrorWebsocketNoRsV2 = specs.NewOpError(websocketOp, "rsv2 not implemented")
+	ErrorWebsocketNoRsV3 = specs.NewOpError(websocketOp, "rsv3 not implemented")
+)
+
+func ComputeAcceptKey(challengeKey string) string {
 	h := sha1.New() // (CWE-326) -- https://datatracker.ietf.org/doc/html/rfc6455#page-54
 	h.Write([]byte(challengeKey))
-	h.Write(websocketAcceptBaseKey)
+	h.Write(acceptBaseKey)
 	return base64.StdEncoding.EncodeToString(h.Sum(nil))
 }

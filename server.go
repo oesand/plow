@@ -2,6 +2,7 @@ package giglet
 
 import (
 	"crypto/tls"
+	"github.com/oesand/giglet/specs"
 	"log"
 	"net"
 	"slices"
@@ -94,7 +95,7 @@ func (server *Server) NextProto(proto string, handler NextProtoHandler) {
 
 func (server *Server) ListenAndServe(addr string) error {
 	if server.isShuttingdown.Load() {
-		return ErrorServerShutdown
+		return specs.ErrCancelled
 	} else if addr == "" {
 		addr = ":http"
 	}
@@ -107,7 +108,7 @@ func (server *Server) ListenAndServe(addr string) error {
 
 func (server *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
 	if server.isShuttingdown.Load() {
-		return ErrorServerShutdown
+		return specs.ErrCancelled
 	} else if addr == "" {
 		addr = ":http"
 	}
@@ -120,7 +121,7 @@ func (server *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
 
 func (server *Server) ListenAndServeTLSRaw(addr string, cert tls.Certificate) error {
 	if server.isShuttingdown.Load() {
-		return ErrorServerShutdown
+		return specs.ErrCancelled
 	} else if addr == "" {
 		addr = ":http"
 	}

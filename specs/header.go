@@ -2,6 +2,7 @@ package specs
 
 import (
 	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal/utils/plain"
 	"iter"
 )
 
@@ -33,7 +34,7 @@ func (header *Header) Get(name string) string {
 
 func (header *Header) TryGet(name string) (string, bool) {
 	if header.Any() {
-		value, has := header.headers[utils.TitleCase(name)]
+		value, has := header.headers[plain.TitleCase(name)]
 		return value, has
 	}
 	return "", false
@@ -41,14 +42,14 @@ func (header *Header) TryGet(name string) (string, bool) {
 
 func (header *Header) Has(name string) bool {
 	if header.Any() {
-		_, has := header.headers[utils.TitleCase(name)]
+		_, has := header.headers[plain.TitleCase(name)]
 		return has
 	}
 	return false
 }
 
 func (header *Header) Set(name, value string) {
-	name = utils.TitleCase(name)
+	name = plain.TitleCase(name)
 	if name == "Set-Cookie" || name == "Cookie" {
 		panic("header not support direct set cookie, use method 'SetCookie'")
 	} else if header.headers == nil {
@@ -59,7 +60,7 @@ func (header *Header) Set(name, value string) {
 
 func (header *Header) Del(name string) {
 	if header.Any() {
-		delete(header.headers, utils.TitleCase(name))
+		delete(header.headers, plain.TitleCase(name))
 	}
 }
 
@@ -91,7 +92,7 @@ func (header *Header) HasCookie(name string) bool {
 
 func (header *Header) DelCookie(name string) {
 	if header.AnyCookies() {
-		delete(header.cookies, utils.TitleCase(name))
+		delete(header.cookies, plain.TitleCase(name))
 	}
 }
 

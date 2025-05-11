@@ -2,6 +2,7 @@ package specs
 
 import (
 	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal/utils/plain"
 	"net/url"
 	"strings"
 )
@@ -41,7 +42,7 @@ func ParseQuery(query string) Query {
 }
 
 func (q Query) String() string {
-	if len(q) == 0 {
+	if q == nil || len(q) == 0 {
 		return ""
 	}
 	var buf strings.Builder
@@ -49,9 +50,9 @@ func (q Query) String() string {
 		if buf.Len() > 0 {
 			buf.WriteByte('&')
 		}
-		buf.WriteString(utils.EscapeUrl(k, utils.EscapingQueryComponent))
+		buf.WriteString(plain.EscapeUrl(k, plain.EscapingQueryComponent))
 		buf.WriteByte('=')
-		buf.WriteString(utils.EscapeUrl(v, utils.EscapingQueryComponent))
+		buf.WriteString(plain.EscapeUrl(v, plain.EscapingQueryComponent))
 	}
 	return buf.String()
 }

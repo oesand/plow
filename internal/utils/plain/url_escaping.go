@@ -1,11 +1,9 @@
-package utils
+package plain
 
 import (
 	"strconv"
 	"strings"
 )
-
-const upperHex = "0123456789ABCDEF"
 
 type EscapingMode int
 
@@ -141,7 +139,7 @@ func shouldEscape(c byte, mode EscapingMode) bool {
 			return true
 
 		case EscapingFragment: // §4.1
-			// The RFC text is silent but the grammar allows
+			// The RFC plain is silent but the grammar allows
 			// everything, so escape nothing.
 			return false
 		}
@@ -171,7 +169,7 @@ func UnEscapeUrl(s string, mode EscapingMode) (string, error) {
 		switch s[i] {
 		case '%':
 			n++
-			if i+2 >= len(s) || !ishex(s[i+1]) || !ishex(s[i+2]) {
+			if i+2 >= len(s) || !isHex(s[i+1]) || !isHex(s[i+2]) {
 				s = s[i:]
 				if len(s) > 3 {
 					s = s[:3]
@@ -184,7 +182,7 @@ func UnEscapeUrl(s string, mode EscapingMode) (string, error) {
 			// But https://tools.ietf.org/html/rfc6874#section-2
 			// introduces %25 being allowed to escape a percent sign
 			// in IPv6 scoped-address literals. Yay.
-			if mode == EscapingHost && unhex(s[i+1]) < 8 && s[i:i+3] != "%25" {
+			if mode == EscapingHost && unHex(s[i+1]) < 8 && s[i:i+3] != "%25" {
 				return "", EscapeError(s[i : i+3])
 			}
 			if mode == EscapingZone {
@@ -195,7 +193,7 @@ func UnEscapeUrl(s string, mode EscapingMode) (string, error) {
 				// That is, you can use escaping in the zone identifier but not
 				// to introduce bytes you couldn't just write directly.
 				// But Windows puts spaces here! Yay.
-				v := unhex(s[i+1])<<4 | unhex(s[i+2])
+				v := unHex(s[i+1])<<4 | unHex(s[i+2])
 				if s[i:i+3] != "%25" && v != ' ' && shouldEscape(v, EscapingHost) {
 					return "", EscapeError(s[i : i+3])
 				}
@@ -221,7 +219,7 @@ func UnEscapeUrl(s string, mode EscapingMode) (string, error) {
 	for i := 0; i < len(s); i++ {
 		switch s[i] {
 		case '%':
-			t.WriteByte(unhex(s[i+1])<<4 | unhex(s[i+2]))
+			t.WriteByte(unHex(s[i+1])<<4 | unHex(s[i+2]))
 			i += 2
 		case '+':
 			if mode == EscapingQueryComponent {
@@ -236,7 +234,9 @@ func UnEscapeUrl(s string, mode EscapingMode) (string, error) {
 	return t.String(), nil
 }
 
-func unhex(c byte) byte {
+const upperHex = "0123456789ABCDEF"
+
+func unHex(c byte) byte {
 	switch {
 	case '0' <= c && c <= '9':
 		return c - '0'
@@ -248,7 +248,7 @@ func unhex(c byte) byte {
 	return 0
 }
 
-func ishex(c byte) bool {
+func isHex(c byte) bool {
 	switch {
 	case '0' <= c && c <= '9':
 		return true

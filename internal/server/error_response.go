@@ -7,7 +7,7 @@ import (
 )
 
 var CloseHeaders = specs.NewHeader(func(header *specs.Header) {
-	header.Set("Content-Type", "text/plain; charset=utf-8")
+	header.Set("Content-Type", "plain/plain; charset=utf-8")
 	header.Set("Connection", "close")
 })
 

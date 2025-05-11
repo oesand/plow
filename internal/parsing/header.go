@@ -4,26 +4,19 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"errors"
-	"fmt"
 	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal/utils/plain"
+	"github.com/oesand/giglet/internal/utils/stream"
 	"github.com/oesand/giglet/specs"
 	"golang.org/x/net/http/httpguts"
 )
 
-var (
-	rawColon       = []byte(": ")
-	ErrorCancelled = &specs.GigletError{Err: errors.New("cancelled")}
-	ErrorTooLarge  = &specs.GigletError{
-		Op:  "reading",
-		Err: errors.New("too large"),
-	}
-)
+var rawColon = []byte(": ")
 
 func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, totalLimit int64) (*specs.Header, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ErrorCancelled
+		return nil, specs.ErrCancelled
 	default:
 	}
 
@@ -31,19 +24,16 @@ func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 
 	// The first line cannot start with a leading space.
 	if buf, err := reader.Peek(1); err == nil && (buf[0] == ' ' || buf[0] == '\t') {
-		line, err := utils.ReadBufferLine(reader, lineLimit)
+		line, err := stream.ReadBufferLine(reader, lineLimit)
 		if err != nil {
 			return nil, err
 		}
 		totalLen = int64(len(line))
 		if totalLimit > 0 && totalLen > lineLimit {
-			return nil, ErrorTooLarge
+			return nil, specs.ErrTooLarge
 		}
 
-		return nil, &specs.GigletError{
-			Op:  "headers/server",
-			Err: fmt.Errorf("malformed header initial line: %s", line),
-		}
+		return nil, specs.NewOpError("parsing", "malformed header initial line")
 	}
 
 	header := specs.NewHeader()
@@ -52,16 +42,13 @@ func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, ErrorCancelled
+			return nil, specs.ErrCancelled
 		default:
 		}
 
-		line, err := utils.ReadBufferLine(reader, lineLimit)
+		line, err := stream.ReadBufferLine(reader, lineLimit)
 		if err != nil {
-			return nil, &specs.GigletError{
-				Op:  "headers/server",
-				Err: err,
-			}
+			return nil, err
 		} else if len(line) == 0 {
 			return header, nil
 		}
@@ -72,7 +59,7 @@ func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 		}
 		totalLen += int64(len(line))
 		if totalLimit > 0 && totalLen > lineLimit {
-			return nil, ErrorTooLarge
+			return nil, specs.ErrTooLarge
 		}
 
 		if value != nil && len(value) != 0 && line[0] == '\t' {
@@ -86,7 +73,7 @@ func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 			continue
 		}
 
-		headerKey, headerVal := utils.BufferToString(utils.TitleCaseBytes(key)), string(value)
+		headerKey, headerVal := utils.BufferToString(plain.TitleCaseBytes(key)), string(value)
 		if httpguts.ValidHeaderFieldName(headerKey) && httpguts.ValidHeaderFieldValue(headerVal) {
 			if headerKey == "Cookie" {
 				for cookieKey, cookieVal := range ParseCookieHeader(headerVal) {

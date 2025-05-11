@@ -2,12 +2,13 @@ package ws
 
 import (
 	"github.com/oesand/giglet"
+	"github.com/oesand/giglet/internal/utils/stream"
 	"github.com/oesand/giglet/specs"
 	"net"
 	"strings"
 )
 
-func UpgradeWebSocket(req giglet.Request, conf *WebSocketConf, handler WebSocketHandler) giglet.Response {
+func UpgradeResponse(req giglet.Request, conf *Conf, handler Handler) giglet.Response {
 	if req.Method() != specs.HttpMethodGet {
 		return giglet.TextResponse("websocket: upgrading required request method - GET", specs.ContentTypePlain, func(response giglet.Response) {
 			response.SetStatusCode(specs.StatusCodeMethodNotAllowed)
@@ -33,13 +34,13 @@ func UpgradeWebSocket(req giglet.Request, conf *WebSocketConf, handler WebSocket
 		})
 	}
 	if conf == nil {
-		conf = &WebSocketConf{}
+		conf = &Conf{}
 	}
 	req.Hijack(func(conn net.Conn) {
-		reader := bufioReaderPool.Get(conn)
-		defer bufioReaderPool.Put(reader)
+		reader := stream.DefaultBufioReaderPool.Get(conn)
+		defer stream.DefaultBufioReaderPool.Put(reader)
 
-		wsConn := &WebSocketConn{
+		wsConn := &wsConn{
 			request: req,
 			conn:    conn,
 			reader:  *reader,
@@ -54,7 +55,7 @@ func UpgradeWebSocket(req giglet.Request, conf *WebSocketConf, handler WebSocket
 		resp.SetStatusCode(specs.StatusCodeSwitchingProtocols)
 		resp.Header().Set("Upgrade", "websocket")
 		resp.Header().Set("Connection", "Upgrade")
-		resp.Header().Set("Sec-WebSocket-Accept", ComputeWebSocketAcceptKey(challengeKey))
+		resp.Header().Set("Sec-WebSocket-Accept", ComputeAcceptKey(challengeKey))
 		if conf.EnableCompression {
 			if ext := req.Header().Get("Sec-WebSocket-Extensions"); len(ext) > 0 && strings.Contains(ext, "permessage-deflate") {
 

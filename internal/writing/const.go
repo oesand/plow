@@ -1,10 +1,6 @@
 package writing
 
-import "github.com/oesand/giglet/specs"
-
 var (
-	writeHeadOp = specs.GigletOp("write/head")
-
 	rawColonSpace      = []byte(": ")
 	rawCookieDelimiter = []byte("; ")
 	rawCookie          = []byte("Cookie: ")
