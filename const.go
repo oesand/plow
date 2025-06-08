@@ -1,7 +1,6 @@
 package giglet
 
 import (
-	"context"
 	"crypto/tls"
 	"fmt"
 	"github.com/oesand/giglet/internal/server"
@@ -12,7 +11,6 @@ import (
 type Handler func(request Request) Response
 type HijackHandler = server.HijackHandler
 type NextProtoHandler func(conn *tls.Conn)
-type ConnHandler func(addr net.Conn, context context.Context) context.Context
 type EventHandler func()
 
 const DefaultServerName = "giglet"

@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"github.com/oesand/giglet/internal/catch"
 	"github.com/oesand/giglet/internal/server"
 	"github.com/oesand/giglet/internal/utils/stream"
 	"github.com/oesand/giglet/internal/writing"
@@ -14,62 +15,104 @@ import (
 	"net"
 	"net/http/httputil"
 	"strconv"
+	"sync"
 	"time"
 )
 
 func (server *Server) Serve(listener net.Listener) error {
 	if listener == nil {
 		return validationErr("nil listener")
-	} else if server.isShuttingdown.Load() {
-		return specs.ErrCancelled
 	}
+	if server.Handler == nil {
+		return validationErr("nil server handler")
+	}
+	if server.isShuttingdown.Load() {
+		return specs.ErrClosed
+	}
+
+	handler := server.Handler
 
 	server.listenerTrack.Add(1)
 	defer server.listenerTrack.Done()
 
+	var attemptDelay time.Duration
+	var connTrack sync.WaitGroup
+	var err error
+
+	ctx, cancelCtx := context.WithCancel(context.Background())
 	for {
-		conn, err := listener.Accept()
+		var conn net.Conn
+		conn, err = listener.Accept()
 		if server.isShuttingdown.Load() {
-			if err == nil {
+			if err == nil && conn != nil {
 				conn.Close()
 			}
-			return specs.ErrCancelled
+			err = specs.ErrClosed
+			break
 		}
+
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				time.Sleep(time.Second)
+				if attemptDelay == 0 {
+					attemptDelay = 5 * time.Millisecond
+				} else if maxDelay := 1 * time.Second; attemptDelay >= maxDelay {
+					attemptDelay = maxDelay
+				} else {
+					attemptDelay *= 2
+				}
+
+				time.Sleep(attemptDelay)
 				continue
 			}
-			return err
+			break
 		}
 
-		ctx := context.Background()
-		if server.ConnHandler != nil {
-			ctx = server.ConnHandler(conn, ctx)
-			if ctx == nil {
+		attemptDelay = 0
+		connTrack.Add(1)
+
+		if server.FilterConn != nil {
+			if allow := server.FilterConn(conn.RemoteAddr()); !allow {
+				connTrack.Done()
 				conn.Close()
 				continue
 			}
 		}
-		go server.handle(conn, ctx)
+
+		go func() {
+			server.handle(ctx, conn, handler)
+			connTrack.Done()
+		}()
 	}
+
+	cancelCtx()
+	connTrack.Wait()
+	listener.Close()
+
+	return err
 }
 
-func (srv *Server) handle(conn net.Conn, ctx context.Context) {
-	if srv.Handler == nil || srv.isShuttingdown.Load() {
+func (srv *Server) catchCancelled(ctx context.Context) bool {
+	return ctx.Err() != nil
+}
+
+func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
+	if srv.catchCancelled(ctx) {
 		conn.Close()
 		return
 	}
-	handler := srv.Handler
 
 	if tlsConn, ok := conn.(*tls.Conn); ok {
-		if err := tlsConn.HandshakeContext(ctx); err != nil {
+		_, err := catch.CallWithTimeoutContext(ctx, srv.TLSHandshakeTimeout, func(ctx context.Context) (struct{}, error) {
+			err := tlsConn.HandshakeContext(ctx)
+			return struct{}{}, err
+		})
+
+		if err != nil {
 			// If the handshake failed due to the client not speaking
 			// TLS, assume they're speaking plaintext HTTP and write a
-			// 400 response on the TLS conn's underlying net.Conn.
+			// 400 response on the TLS conn underlying net.Conn.
 			if re, ok := err.(tls.RecordHeaderError); ok && re.Conn != nil {
-				responseErrDowngradeHTTPS.Write(conn)
-				conn.Close()
+				responseErrDowngradeHTTPS.WriteTo(conn)
 				return
 			}
 			if srv.Debug {
@@ -86,17 +129,10 @@ func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 				return
 			}
 		}
-
-		conn = tlsConn
-	}
-
-	if srv.isShuttingdown.Load() {
-		conn.Close()
-		return
 	}
 
 	defer func() {
-		if err := recover(); err != nil && err != specs.ErrCancelled && srv.Debug {
+		if err := recover(); err != nil && srv.Debug {
 			srv.logger().Printf("giglet: panic serving from '%s': %v", conn.RemoteAddr(), err)
 		}
 
@@ -119,14 +155,19 @@ func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 			if srv.Debug {
 				srv.logger().Printf("giglet: read request error from '%s': %v", conn.RemoteAddr(), err)
 			}
-			if !stream.IsCommonNetReadError(err) {
+			if !catch.IsCommonNetReadError(err) {
 				var respErr *server.ErrorResponse
 				if errors.As(err, &respErr) {
-					respErr.Write(conn)
+					respErr.WriteTo(conn)
 				} else {
-					responseErrNotProcessable.Write(conn)
+					responseErrNotProcessable.WriteTo(conn)
 				}
 			}
+			break
+		}
+
+		if srv.catchCancelled(ctx) {
+			stream.DefaultBufioReaderPool.Put(headerReader)
 			break
 		}
 
@@ -150,6 +191,10 @@ func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 		}
 
 		stream.DefaultBufioReaderPool.Put(headerReader)
+
+		if srv.catchCancelled(ctx) {
+			break
+		}
 
 		resp := handler(req)
 		var header *specs.Header
@@ -199,6 +244,10 @@ func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 			break
 		}
 
+		if srv.catchCancelled(ctx) {
+			break
+		}
+
 		if req.Method().CanHaveResponseBody() && writable != nil {
 			var writer io.Writer = conn
 			var encodingCloser io.Closer
@@ -225,20 +274,13 @@ func (srv *Server) handle(conn net.Conn, ctx context.Context) {
 				}
 				break
 			}
-
 		}
 
 		if srv.WriteTimeout > 0 {
 			conn.SetWriteDeadline(time.Time{})
 		}
 
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		if srv.isShuttingdown.Load() {
+		if srv.catchCancelled(ctx) {
 			break
 		} else if hijacker := req.Hijacker(); hijacker != nil {
 			hijacker(conn)

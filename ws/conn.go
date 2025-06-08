@@ -178,10 +178,10 @@ func (conn *wsConn) Write(frameType WebSocketFrame, payload []byte) (err error) 
 
 	//if frameType.IsContent() && conn.compressionWriter != nil {
 	//	writer := conn.compressionWriter(conn.conn)
-	//	_, err = writer.Write(buf)
+	//	_, err = writer.WriteTo(buf)
 	//	writer.Close()
 	//} else {
-	//	_, err = conn.conn.Write(buf)
+	//	_, err = conn.conn.WriteTo(buf)
 	//}
 
 	if err == io.EOF {

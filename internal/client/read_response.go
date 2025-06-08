@@ -3,18 +3,13 @@ package client
 import (
 	"bufio"
 	"context"
+	"github.com/oesand/giglet/internal/catch"
 	"github.com/oesand/giglet/internal/parsing"
 	"github.com/oesand/giglet/internal/utils/stream"
 	"github.com/oesand/giglet/specs"
 )
 
 func ReadResponse(ctx context.Context, reader *bufio.Reader, lineLimit int64, totalLimit int64) (*HttpClientResponse, error) {
-	select {
-	case <-ctx.Done():
-		return nil, specs.ErrCancelled
-	default:
-	}
-
 	line, err := stream.ReadBufferLine(reader, 128)
 	if err != nil {
 		return nil, err
@@ -26,6 +21,10 @@ func ReadResponse(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 	}
 	if protoMajor != 1 {
 		return nil, specs.NewOpError("parsing", "unsupported http version %d.%d", protoMajor, protoMinor)
+	}
+
+	if err = catch.CatchContextCancel(ctx); err != nil {
+		return nil, err
 	}
 
 	header, err := parsing.ParseHeaders(ctx, reader, lineLimit, totalLimit)

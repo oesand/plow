@@ -2,6 +2,7 @@ package stream
 
 import (
 	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/specs"
 	"io"
 	"sync/atomic"
 )
@@ -25,7 +26,7 @@ type readClose struct {
 
 func (comb *readClose) Read(p []byte) (int, error) {
 	if comb.closed.Load() {
-		return -1, utils.ErrorAlreadyClosed
+		return -1, specs.ErrClosed
 	}
 	return comb.reading(p)
 }
@@ -33,7 +34,7 @@ func (comb *readClose) Read(p []byte) (int, error) {
 func (comb *readClose) Close() error {
 	if comb.closing != nil {
 		if comb.closed.Load() {
-			return utils.ErrorAlreadyClosed
+			return specs.ErrClosed
 		}
 		defer comb.closed.Store(true)
 		return comb.closing()

@@ -2,6 +2,7 @@ package stream
 
 import (
 	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/specs"
 	"io"
 	"sync/atomic"
 )
@@ -20,7 +21,7 @@ type closer struct {
 func (comb *closer) Close() error {
 	if comb.closing != nil {
 		if comb.closed.Load() {
-			return utils.ErrorAlreadyClosed
+			return specs.ErrClosed
 		}
 		defer comb.closed.Store(true)
 		return comb.closing()

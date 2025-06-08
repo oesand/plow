@@ -6,7 +6,7 @@ import (
 	"io"
 )
 
-var CloseHeaders = specs.NewHeader(func(header *specs.Header) {
+var closeHeaders = specs.NewHeader(func(header *specs.Header) {
 	header.Set("Content-Type", "plain/plain; charset=utf-8")
 	header.Set("Connection", "close")
 })
@@ -17,11 +17,11 @@ type ErrorResponse struct {
 }
 
 func (resp *ErrorResponse) Error() string {
-	return string(resp.Code.Detail()) + ": " + resp.Text
+	return "<" + string(resp.Code.Formatted()) + ">: " + resp.Text
 }
 
-func (resp *ErrorResponse) Write(writer io.Writer) error {
-	_, err := writing.WriteResponseHead(writer, false, resp.Code, CloseHeaders)
+func (resp *ErrorResponse) WriteTo(writer io.Writer) error {
+	_, err := writing.WriteResponseHead(writer, false, resp.Code, closeHeaders)
 	if err != nil {
 		return err
 	}

@@ -5,8 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/oesand/giglet/internal/catch"
 	"github.com/oesand/giglet/internal/parsing"
-	"github.com/oesand/giglet/internal/utils"
 	"github.com/oesand/giglet/internal/utils/stream"
 	"github.com/oesand/giglet/specs"
 	"golang.org/x/net/http/httpguts"
@@ -31,7 +31,7 @@ func ReadRequest(
 
 	line, err := stream.ReadBufferLine(reader, lineLimit)
 	if err != nil {
-		if errors.Is(err, utils.ErrorTooLarge) {
+		if errors.Is(err, specs.ErrTooLarge) {
 			return nil, &ErrorResponse{
 				Code: specs.StatusCodeRequestHeaderFieldsTooLarge,
 				Text: "http: too large header",
@@ -73,10 +73,9 @@ func ReadRequest(
 		conn.SetReadDeadline(time.Time{})
 	}
 
-	select {
-	case <-ctx.Done():
-		return nil, specs.ErrCancelled
-	default:
+	if err = catch.CatchContextCancel(ctx); err != nil {
+		conn.Close()
+		return nil, err
 	}
 
 	header, err := parsing.ParseHeaders(ctx, reader, lineLimit, totalLimit)
@@ -141,7 +140,6 @@ func ReadRequest(
 		context:    ctx,
 		header:     header,
 
-		readTimeout:      timeout,
 		SelectedEncoding: selectedEncoding,
 	}
 

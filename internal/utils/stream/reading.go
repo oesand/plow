@@ -2,7 +2,6 @@ package stream
 
 import (
 	"bufio"
-	"github.com/oesand/giglet/internal/utils"
 	"github.com/oesand/giglet/specs"
 )
 
@@ -16,7 +15,7 @@ func ReadBufferLine(reader *bufio.Reader, limit int64) ([]byte, error) {
 				Err: err,
 			}
 		} else if limit > 0 && int64(len(line))+int64(len(l)) > limit {
-			return nil, utils.ErrorTooLarge
+			return nil, specs.ErrTooLarge
 		} else if line == nil && !more {
 			return l, nil
 		}

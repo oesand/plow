@@ -6,7 +6,6 @@ import (
 	"github.com/oesand/giglet/specs"
 	"io"
 	"net"
-	"time"
 )
 
 type HijackHandler func(conn net.Conn)
@@ -14,10 +13,9 @@ type HijackHandler func(conn net.Conn)
 type HttpRequest struct {
 	_ utils.NoCopy
 
-	readTimeout time.Duration
-	conn        net.Conn
-	hijacker    HijackHandler
-	context     context.Context
+	conn     net.Conn
+	hijacker HijackHandler
+	context  context.Context
 
 	protoMajor, protoMinor uint16
 	method                 specs.HttpMethod

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"github.com/oesand/giglet/internal/catch"
 	"github.com/oesand/giglet/internal/utils"
 	"github.com/oesand/giglet/internal/utils/plain"
 	"github.com/oesand/giglet/internal/utils/stream"
@@ -14,12 +15,6 @@ import (
 var rawColon = []byte(": ")
 
 func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, totalLimit int64) (*specs.Header, error) {
-	select {
-	case <-ctx.Done():
-		return nil, specs.ErrCancelled
-	default:
-	}
-
 	var totalLen int64
 
 	// The first line cannot start with a leading space.
@@ -40,10 +35,8 @@ func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 
 	var key, value []byte
 	for {
-		select {
-		case <-ctx.Done():
-			return nil, specs.ErrCancelled
-		default:
+		if err := catch.CatchContextCancel(ctx); err != nil {
+			return nil, err
 		}
 
 		line, err := stream.ReadBufferLine(reader, lineLimit)
