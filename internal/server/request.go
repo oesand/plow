@@ -12,21 +12,16 @@ import (
 	"golang.org/x/net/http/httpguts"
 	"net"
 	"strings"
-	"time"
 )
 
 func ReadRequest(
-	ctx context.Context, conn net.Conn, reader *bufio.Reader, timeout time.Duration,
+	ctx context.Context, conn net.Conn, reader *bufio.Reader,
 	lineLimit int64, totalLimit int64,
 ) (*HttpRequest, error) {
 	select {
 	case <-ctx.Done():
 		return nil, specs.ErrCancelled
 	default:
-	}
-
-	if timeout > 0 {
-		conn.SetReadDeadline(time.Now().Add(timeout))
 	}
 
 	line, err := stream.ReadBufferLine(reader, lineLimit)
@@ -67,10 +62,6 @@ func ReadRequest(
 			Code: specs.StatusCodeMisdirectedRequest,
 			Text: fmt.Sprintf("http: invalid request url \"%s\"", rawurl),
 		}
-	}
-
-	if timeout > 0 {
-		conn.SetReadDeadline(time.Time{})
 	}
 
 	if err = catch.CatchContextCancel(ctx); err != nil {
