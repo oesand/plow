@@ -1,5 +1,7 @@
 package specs
 
+import "strconv"
+
 type StatusCode uint16
 
 const (
@@ -88,6 +90,12 @@ func (status StatusCode) IsRedirect() bool {
 		status == StatusCodeSeeOther ||
 		status == StatusCodeTemporaryRedirect ||
 		status == StatusCodePermanentRedirect
+}
+
+func (status StatusCode) Formatted() []byte {
+	buf := strconv.AppendUint(nil, uint64(status), 10)
+	buf = append(buf, ' ')
+	return append(buf, status.Detail()...)
 }
 
 func (code StatusCode) Detail() []byte {
@@ -217,5 +225,5 @@ func (code StatusCode) Detail() []byte {
 	case StatusCodeNetworkAuthenticationRequired:
 		return []byte("Network Authentication Required")
 	}
-	return nil
+	return make([]byte, 0)
 }

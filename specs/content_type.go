@@ -5,15 +5,15 @@ type ContentType string
 const (
 	ContentTypeUndefined ContentType = ""
 	ContentTypeRaw       ContentType = "application/octet-stream"
-	ContentTypePlain     ContentType = "text/plain"
+	ContentTypePlain     ContentType = "plain/plain"
 	ContentTypeRichtext  ContentType = "application/rtf"
-	ContentTypeMarkdown  ContentType = "text/markdown"
+	ContentTypeMarkdown  ContentType = "plain/markdown"
 
-	ContentTypeHTML       ContentType = "text/html"
-	ContentTypeCSV        ContentType = "text/csv"
-	ContentTypeCSS        ContentType = "text/css"
+	ContentTypeHTML       ContentType = "plain/html"
+	ContentTypeCSV        ContentType = "plain/csv"
+	ContentTypeCSS        ContentType = "plain/css"
 	ContentTypePDF        ContentType = "application/pdf"
-	ContentTypeJavaScript ContentType = "text/javascript"
+	ContentTypeJavaScript ContentType = "plain/javascript"
 	ContentTypeFontTTF    ContentType = "font/ttf"
 
 	ContentTypeAVI  ContentType = "video/x-msvideo"

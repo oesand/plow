@@ -2,6 +2,7 @@ package giglet
 
 import (
 	"crypto/tls"
+	"github.com/oesand/giglet/specs"
 	"log"
 	"net"
 	"slices"
@@ -10,15 +11,29 @@ import (
 	"time"
 )
 
+func DefaultServer(handler Handler) *Server {
+	if handler == nil {
+		panic("handler must not be nil")
+	}
+	return &Server{
+		Handler:             handler,
+		ReadLineMaxLength:   1024,
+		HeadMaxLength:       8 * 1024,
+		ReadTimeout:         10 * time.Second,
+		WriteTimeout:        10 * time.Second,
+		TLSHandshakeTimeout: 5 * time.Second,
+	}
+}
+
 type Server struct {
 	// Handler to invoke
 	Handler Handler
 
 	Logger *log.Logger
 
-	// Handler for new incoming connections to provide filtering by address
-	// Returns context.Context - accept, nil - close connection
-	ConnHandler ConnHandler
+	// FilterConn handles all new incoming connections to provide filtering by address
+	// Returns true - accept, false - close connection
+	FilterConn func(addr net.Addr) bool
 
 	// Debug flag to allow show system messages
 	Debug bool
@@ -26,7 +41,7 @@ type Server struct {
 	// Server name for sending in response headers.
 	ServerName string
 
-	// ReadTimeout is the maximum duration for reading the entire
+	// ReadTimeout is the maximum duration for server the entire
 	// request, including the body. A zero or negative value means
 	// there will be no timeout.
 	ReadTimeout time.Duration
@@ -36,21 +51,33 @@ type Server struct {
 	// there will be no timeout.
 	WriteTimeout time.Duration
 
+	// TLSHandshakeTimeout specifies the maximum amount of time to
+	// wait for a TLS handshake. Zero means no timeout.
+	TLSHandshakeTimeout time.Duration
+
 	// TLSConfig optionally provides a TLS configuration
 	TLSConfig *tls.Config
 
-	// ContentMaxSizeBytes controls the maximum number of bytes the
-	// server will read parsing the request header's keys and
-	// values, including the request line and the request body.
-	// If zero, DefaultContentMaxSizeBytes is used.
-	ContentMaxSizeBytes int64
+	// ReadLineMaxLength maximum size in bytes
+	// to read lines in the request
+	// such as headers and headlines
+	//
+	// If zero there is no limit
+	ReadLineMaxLength int64
 
-	nextProtos     map[string]NextProtoHandler
-	isShuttingdown atomic.Bool
+	// HeadMaxLength maximum size in bytes
+	// to read lines in the request
+	// such as headline and headers together
+	//
+	// If zero there is no limit
+	HeadMaxLength int64
+
+	nextProtos map[string]NextProtoHandler
+
 	listenerTrack  sync.WaitGroup
+	isShuttingdown atomic.Bool
 
-	mutex      sync.Mutex
-	onShutdown []EventHandler
+	mutex sync.Mutex
 }
 
 func (server *Server) logger() *log.Logger {
@@ -60,23 +87,11 @@ func (server *Server) logger() *log.Logger {
 	return log.Default()
 }
 
-func (server *Server) applyReadTimeout(conn net.Conn) {
-	if server.ReadTimeout > 0 {
-		conn.SetReadDeadline(time.Now().Add(server.ReadTimeout))
-	}
-}
-
-func (server *Server) applyWriteTimeout(conn net.Conn) {
-	if server.WriteTimeout > 0 {
-		conn.SetWriteDeadline(time.Now().Add(server.WriteTimeout))
-	}
-}
-
 func (server *Server) HasNextProto(proto string) bool {
 	server.mutex.Lock()
-	_, has := server.nextProtos[proto]
-	server.mutex.Unlock()
+	defer server.mutex.Unlock()
 
+	_, has := server.nextProtos[proto]
 	return has
 }
 
@@ -98,7 +113,7 @@ func (server *Server) NextProto(proto string, handler NextProtoHandler) {
 
 func (server *Server) ListenAndServe(addr string) error {
 	if server.isShuttingdown.Load() {
-		return ErrorServerShutdown
+		return specs.ErrClosed
 	} else if addr == "" {
 		addr = ":http"
 	}
@@ -111,7 +126,7 @@ func (server *Server) ListenAndServe(addr string) error {
 
 func (server *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
 	if server.isShuttingdown.Load() {
-		return ErrorServerShutdown
+		return specs.ErrClosed
 	} else if addr == "" {
 		addr = ":http"
 	}
@@ -124,7 +139,7 @@ func (server *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
 
 func (server *Server) ListenAndServeTLSRaw(addr string, cert tls.Certificate) error {
 	if server.isShuttingdown.Load() {
-		return ErrorServerShutdown
+		return specs.ErrClosed
 	} else if addr == "" {
 		addr = ":http"
 	}
@@ -136,7 +151,9 @@ func (server *Server) ListenAndServeTLSRaw(addr string, cert tls.Certificate) er
 }
 
 func (srv *Server) ServeTLS(lst net.Listener, certFile, keyFile string) error {
-	if len(certFile) == 0 || len(keyFile) == 0 {
+	if srv.isShuttingdown.Load() {
+		return specs.ErrClosed
+	} else if len(certFile) == 0 || len(keyFile) == 0 {
 		return validationErr("unknown certificate source")
 	}
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
@@ -147,6 +164,10 @@ func (srv *Server) ServeTLS(lst net.Listener, certFile, keyFile string) error {
 }
 
 func (server *Server) ServeTLSRaw(lst net.Listener, cert tls.Certificate) error {
+	if server.isShuttingdown.Load() {
+		return specs.ErrClosed
+	}
+
 	var config *tls.Config
 	if server.TLSConfig != nil {
 		config = server.TLSConfig.Clone()
@@ -168,23 +189,7 @@ func (server *Server) ServeTLSRaw(lst net.Listener, cert tls.Certificate) error 
 	return server.Serve(listener)
 }
 
-func (server *Server) OnShutdown(handler EventHandler) {
-	if server.isShuttingdown.Load() {
-		return
-	}
-	server.mutex.Lock()
-	server.onShutdown = append(server.onShutdown, handler)
-	server.mutex.Unlock()
-}
-
 func (server *Server) Shutdown() {
-	server.mutex.Lock()
-	defer server.mutex.Unlock()
-
-	for _, handle := range server.onShutdown {
-		go handle()
-	}
-
 	server.isShuttingdown.Store(true)
 	server.listenerTrack.Wait()
 }

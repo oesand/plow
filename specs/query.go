@@ -1,52 +1,58 @@
 package specs
 
 import (
-	"fmt"
+	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal/utils/plain"
 	"net/url"
 	"strings"
 )
 
-type Form url.Values
 type Query map[string]string
 
-func ParseQuery(query string) (q Query, err error) {
-	for query != "" {
-		var key string
-		key, query, _ = strings.Cut(query, "&")
-		if strings.Contains(key, ";") {
-			err = fmt.Errorf("invalid semicolon separator in query")
-			continue
-		}
-		if key == "" {
+func ParseQuery(query string) Query {
+	q := make(Query)
+	if query == "" {
+		return q
+	}
+
+	pairs := strings.Split(query, "&")
+	for _, pair := range pairs {
+		key, value, ok := strings.Cut(pair, "=")
+		if !ok || key == "" {
 			continue
 		}
 
-		key, value, _ := strings.Cut(key, "=")
-		key, err = url.QueryUnescape(key)
-		if _, has := q[key]; err != nil || has {
-			continue
-		}
-		value, err = url.QueryUnescape(value)
+		decodedKey, err := url.QueryUnescape(key)
 		if err != nil {
 			continue
 		}
-		q[key] = value
+		if _, has := q[decodedKey]; has {
+			continue
+		}
+
+		decodedValue, err := url.QueryUnescape(value)
+		if err != nil {
+			continue
+		}
+
+		q[decodedKey] = decodedValue
 	}
-	return q, err
+
+	return q
 }
 
 func (q Query) String() string {
-	if len(q) == 0 {
+	if q == nil || len(q) == 0 {
 		return ""
 	}
 	var buf strings.Builder
-	for k, v := range q {
+	for k, v := range utils.IterMapSorted(q) {
 		if buf.Len() > 0 {
 			buf.WriteByte('&')
 		}
-		buf.WriteString(url.QueryEscape(k))
+		buf.WriteString(plain.EscapeUrl(k, plain.EscapingQueryComponent))
 		buf.WriteByte('=')
-		buf.WriteString(url.QueryEscape(v))
+		buf.WriteString(plain.EscapeUrl(v, plain.EscapingQueryComponent))
 	}
 	return buf.String()
 }
