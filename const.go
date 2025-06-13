@@ -1,19 +1,15 @@
 package giglet
 
 import (
-	"crypto/tls"
-	"fmt"
 	"github.com/oesand/giglet/internal/server"
 	"github.com/oesand/giglet/specs"
 	"net"
 )
 
-type Handler func(request Request) Response
-type HijackHandler = server.HijackHandler
-type NextProtoHandler func(conn *tls.Conn)
-type EventHandler func()
-
-const DefaultServerName = "giglet"
+const (
+	DefaultServerName           = "giglet"
+	DefaultMaxRedirectCount int = 10
+)
 
 var (
 	zeroDialer         net.Dialer
@@ -21,17 +17,14 @@ var (
 
 	responseErrDowngradeHTTPS = &server.ErrorResponse{
 		Code: specs.StatusCodeBadRequest,
-		Text: "sent an HTTP request to an HTTPS server.",
+		Text: "http: sent an HTTP request to an HTTPS server.",
 	}
 	responseErrNotProcessable = &server.ErrorResponse{
 		Code: specs.StatusCodeUnprocessableEntity,
-		Text: "the request could not be processed.",
+		Text: "http: the request could not be processed.",
+	}
+	responseErrBodyTooLarge = &server.ErrorResponse{
+		Code: specs.StatusCodeRequestEntityTooLarge,
+		Text: "http: too large body",
 	}
 )
-
-func validationErr(err string, a ...any) error {
-	return &specs.GigletError{
-		Op:  "validation",
-		Err: fmt.Errorf(err, a...),
-	}
-}

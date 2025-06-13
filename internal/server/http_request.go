@@ -31,6 +31,9 @@ func (req *HttpRequest) Context() context.Context {
 }
 
 func (req *HttpRequest) WithContext(context context.Context) {
+	if context == nil {
+		panic("nil Context pointer")
+	}
 	req.context = context
 }
 

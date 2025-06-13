@@ -19,6 +19,7 @@ func DefaultServer(handler Handler) *Server {
 		Handler:             handler,
 		ReadLineMaxLength:   1024,
 		HeadMaxLength:       8 * 1024,
+		MaxBodySize:         20 << 20, // 20 mb
 		ReadTimeout:         10 * time.Second,
 		WriteTimeout:        10 * time.Second,
 		TLSHandshakeTimeout: 5 * time.Second,
@@ -71,6 +72,15 @@ type Server struct {
 	//
 	// If zero there is no limit
 	HeadMaxLength int64
+
+	// MaxBodySize maximum size in bytes
+	// to read request body size.
+	//
+	// The server responds ErrTooLarge if this limit is greater than 0
+	// and response body is greater than the limit.
+	//
+	// By default, request body size is unlimited.
+	MaxBodySize int64
 
 	nextProtos map[string]NextProtoHandler
 
@@ -154,7 +164,7 @@ func (srv *Server) ServeTLS(lst net.Listener, certFile, keyFile string) error {
 	if srv.isShuttingdown.Load() {
 		return specs.ErrClosed
 	} else if len(certFile) == 0 || len(keyFile) == 0 {
-		return validationErr("unknown certificate source")
+		panic("unknown certificate source")
 	}
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {

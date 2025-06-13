@@ -1,48 +1,56 @@
 package ws
 
 import (
+	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base64"
 	"github.com/oesand/giglet/specs"
+	"io"
 )
 
 type Handler func(conn Conn)
 
+type WsFrameType byte
+
 const (
-	// Frame header byte 0 bits from Section 5.2 of RFC 6455
-	websocketFinalBit byte = 1 << 7
-	websocketRsv1Bit  byte = 1 << 6
-	websocketRsv2Bit  byte = 1 << 5
-	websocketRsv3Bit  byte = 1 << 4
+	wsContinuationFrame WsFrameType = 0
+	wsTextFrame         WsFrameType = 1
+	wsBinaryFrame       WsFrameType = 2
+	wsCloseFrame        WsFrameType = 8
+	wsPingFrame         WsFrameType = 9
+	wsPongFrame         WsFrameType = 10
 
-	// Frame header byte 1 bits from Section 5.2 of RFC 6455
-	websocketMaskBit byte = 1 << 7
-
-	websocketMaxFrameHeaderSize         = 2 + 8 + 4 // Fixed header + length + mask
-	websocketMaxServiceFramePayloadSize = 125
-
-	// minCompressionLevel     = -2 // flate.HuffmanOnly not defined in Go < 1.6
-	// maxCompressionLevel     = flate.BestCompression
-	// defaultCompressionLevel = 1
+	maxServiceFramePayloadSize = 125
 )
 
 var (
+	ErrFailChallenge   = specs.NewOpError("ws", "fail to complete dial challenge")
+	ErrUnknownProtocol = specs.NewOpError("ws", "unknown websocket protocol")
+
 	acceptBaseKey = []byte("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
-
-	websocketOp = specs.GigletOp("ws")
-
-	ErrorWebsocketInvalidFrameType = specs.NewOpError(websocketOp, "invalid frame type")
-	ErrorWebsocketFrameSizeExceed  = specs.NewOpError(websocketOp, "frame size exceed")
-	ErrorWebsocketClosed           = specs.NewOpError(websocketOp, "closed")
-
-	ErrorWebsocketNoRsV1 = specs.NewOpError(websocketOp, "rsv1 not implemented")
-	ErrorWebsocketNoRsV2 = specs.NewOpError(websocketOp, "rsv2 not implemented")
-	ErrorWebsocketNoRsV3 = specs.NewOpError(websocketOp, "rsv3 not implemented")
 )
 
-func ComputeAcceptKey(challengeKey string) string {
+func computeAcceptKey(challengeKey []byte) string {
 	h := sha1.New() // (CWE-326) -- https://datatracker.ietf.org/doc/html/rfc6455#page-54
-	h.Write([]byte(challengeKey))
+	h.Write(challengeKey)
 	h.Write(acceptBaseKey)
 	return base64.StdEncoding.EncodeToString(h.Sum(nil))
+}
+
+func newFrameMask() (maskingKey []byte, err error) {
+	maskingKey = make([]byte, 4)
+	if _, err = io.ReadFull(rand.Reader, maskingKey); err != nil {
+		return
+	}
+	return
+}
+
+func newChallengeKey() (nonce []byte) {
+	key := make([]byte, 16)
+	if _, err := io.ReadFull(rand.Reader, key); err != nil {
+		panic(err)
+	}
+	nonce = make([]byte, 24)
+	base64.StdEncoding.Encode(nonce, key)
+	return
 }

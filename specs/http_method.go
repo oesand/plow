@@ -33,6 +33,6 @@ func (method HttpMethod) IsPostable() bool {
 		method == HttpMethodDelete || method == HttpMethodPatch
 }
 
-func (method HttpMethod) CanHaveResponseBody() bool {
+func (method HttpMethod) IsReplyable() bool {
 	return !(method == HttpMethodHead || method == HttpMethodConnect || method == HttpMethodOptions)
 }

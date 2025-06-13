@@ -21,10 +21,10 @@ import (
 
 func (server *Server) Serve(listener net.Listener) error {
 	if listener == nil {
-		return validationErr("nil listener")
+		panic("nil listener")
 	}
 	if server.Handler == nil {
-		return validationErr("nil server handler")
+		panic("nil server handler")
 	}
 	if server.isShuttingdown.Load() {
 		return specs.ErrClosed
@@ -176,14 +176,49 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 
 			reader := io.MultiReader(bytes.NewReader(extraBuffered), conn)
 
+			////
 			if encoding, has := req.Header().TryGet("Transfer-Encoding"); has {
 				switch encoding {
 				case "chunked":
+					if srv.MaxBodySize > 0 {
+						reader = io.LimitReader(reader, srv.MaxBodySize)
+					}
 					reader = httputil.NewChunkedReader(reader)
 				}
 			} else if raw, has := req.Header().TryGet("Content-Length"); has && len(raw) > 0 {
 				if contentLength, err := strconv.ParseInt(raw, 10, 64); err != nil {
 					reader = io.LimitReader(reader, contentLength)
+				}
+			}
+
+			switch req.Header().Get("Transfer-Encoding") {
+			case "chunked":
+				if srv.MaxBodySize > 0 {
+					reader = io.LimitReader(reader, srv.MaxBodySize)
+				}
+				reader = httputil.NewChunkedReader(reader)
+			default:
+				var contentLength int64
+				if cl := req.Header().Get("Content-Length"); cl != "" {
+					contentLength, err = strconv.ParseInt(cl, 10, 64)
+					if err == nil {
+						if contentLength <= 0 {
+							reader = nil
+						} else if srv.MaxBodySize > 0 && contentLength >= srv.MaxBodySize {
+							responseErrBodyTooLarge.WriteTo(conn)
+							return
+						}
+					}
+				}
+
+				if reader != nil {
+					if contentLength <= 0 && srv.MaxBodySize > 0 {
+						contentLength = srv.MaxBodySize
+					}
+
+					if contentLength > 0 {
+						reader = io.LimitReader(reader, contentLength)
+					}
 				}
 			}
 
@@ -222,7 +257,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 		header.Set("Date", time.Now().Format(specs.TimeFormat))
 
 		if !code.IsValid() {
-			if !req.Method().CanHaveResponseBody() || writable == nil {
+			if !req.Method().IsReplyable() || writable == nil {
 				code = specs.StatusCodeNoContent
 			} else {
 				code = specs.StatusCodeOK
@@ -248,7 +283,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 			break
 		}
 
-		if req.Method().CanHaveResponseBody() && writable != nil {
+		if req.Method().IsReplyable() && code.IsReplyable() && writable != nil {
 			var writer io.Writer = conn
 			var encodingCloser io.Closer
 
@@ -285,7 +320,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 		} else if hijacker := req.Hijacker(); hijacker != nil {
 			hijacker(conn)
 			break
-		} else if req.Method() != specs.HttpMethodHead && writable == nil && code.HaveBody() {
+		} else if req.Method() != specs.HttpMethodHead && writable == nil && code.IsReplyable() {
 			break
 		}
 	}

@@ -75,9 +75,9 @@ const (
 	StatusCodeNetworkAuthenticationRequired StatusCode = 511
 )
 
-func (status StatusCode) HaveBody() bool {
-	return !(100 <= status && status <= 199 || status == 204 ||
-		(300 <= status && status < 400))
+func (status StatusCode) IsReplyable() bool {
+	noContent := (100 <= status && status < 200) || status == 204 || (300 <= status && status < 400)
+	return !noContent
 }
 
 func (status StatusCode) IsValid() bool {

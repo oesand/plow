@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/tls"
+	"fmt"
 	"github.com/oesand/giglet/internal/catch"
 	"github.com/oesand/giglet/internal/client"
 	"github.com/oesand/giglet/internal/utils"
@@ -28,10 +29,12 @@ func DefaultClient() *Client {
 	return &Client{
 		ReadLineMaxLength:   1024,
 		HeadMaxLength:       8 * 1024,
+		MaxBodySize:         20 << 20, // 20 mb
 		ReadTimeout:         10 * time.Second,
 		WriteTimeout:        10 * time.Second,
 		TLSHandshakeTimeout: 5 * time.Second,
 		DialContext:         dialer.DialContext,
+		MaxRedirectCount:    DefaultMaxRedirectCount,
 	}
 }
 
@@ -50,6 +53,20 @@ type Client struct {
 	// to read headline and headers together
 	// If zero there is no limit
 	HeadMaxLength int64
+
+	// MaxBodySize maximum size in bytes
+	// to read response body size.
+	//
+	// The client returns specs.ErrTooLarge if this limit is greater than 0
+	// and response body is greater than the limit.
+	//
+	// By default, response body size is unlimited.
+	MaxBodySize int64
+
+	// MaxRedirectCount maximum number of redirects
+	// before getting an error.
+	// if not specified is used DefaultMaxRedirectCount
+	MaxRedirectCount int
 
 	// ReadTimeout is the maximum duration for server the entire
 	// response, including the body. A zero or negative value means
@@ -86,8 +103,8 @@ type Client struct {
 	// if they are explicitly set on the Request.
 	Jar *specs.CookieJar
 
-	// TLSClientConfig specifies the TLS configuration to use with
-	// tls.Client.
+	// TLSClientConfig specifies the TLS configuration
+	// to use with tls.Client.
 	// If nil, the default configuration is used.
 	// If non-nil, HTTP/2 support may not be enabled by default.
 	TLSConfig *tls.Config
@@ -102,13 +119,7 @@ type Client struct {
 	TLSHandshakeContext func(ctx context.Context, conn net.Conn, host string) (net.Conn, error)
 
 	// DialContext specifies the dial function for creating unencrypted TCP connections.
-	// If DialContext is nil (and the deprecated Dial below is also nil),
-	// then the transport dials using package net.
-	//
-	// DialContext runs concurrently with calls to RoundTrip.
-	// A RoundTrip call that initiates a dial may end up using
-	// a connection dialed previously when the earlier connection
-	// becomes idle before the later DialContext completes.
+	// If DialContext is nil then the transport dials using package net.
 	DialContext func(ctx context.Context, network, addr string) (net.Conn, error)
 
 	mu sync.RWMutex
@@ -120,33 +131,50 @@ func (cln *Client) Make(request ClientRequest) (ClientResponse, error) {
 
 func (cln *Client) MakeContext(ctx context.Context, request ClientRequest) (ClientResponse, error) {
 	if cln == nil {
-		return nil, validationErr("nil Client pointer")
+		panic("nil Client pointer")
 	}
 	if ctx == nil {
-		return nil, validationErr("nil Context pointer")
+		panic("nil Context pointer")
 	}
 	if request == nil {
-		return nil, validationErr("nil Request pointer")
+		panic("nil Request pointer")
 	}
 
-	_url := request.Url()
-	url := &_url
+	url := request.Url()
+	if url.Scheme == "" {
+		url.Scheme = "https"
+	}
+
 	if !(url.Scheme == "http" || url.Scheme == "https") || url.Host == "" {
-		return nil, validationErr("invalid request url '%s'", url)
+		panic(fmt.Sprintf("invalid request url '%s'", url))
+	}
+
+	if url.Port == 0 {
+		switch url.Scheme {
+		case "http":
+			url.Port = 80
+		case "https":
+			url.Port = 443
+		}
 	}
 
 	method := request.Method()
 	if !method.IsValid() {
-		return nil, validationErr("invalid request method '%s'", method)
+		panic(fmt.Sprintf("invalid request method '%s'", method))
 	}
 
+	maxRedirectCount := DefaultMaxRedirectCount
+	if cln.MaxRedirectCount > 0 {
+		maxRedirectCount = cln.MaxRedirectCount
+	}
+
+	var redirectCount int
 	for {
 		if err := catch.CatchContextCancel(ctx); err != nil {
 			return nil, err
 		}
 
-		writer, _ := request.(BodyWriter)
-		resp, err := cln.send(ctx, method, url, request.Header(), writer)
+		resp, err := cln.send(ctx, method, url, request)
 
 		if err != nil {
 			return nil, catch.CatchCommonErr(err)
@@ -156,8 +184,17 @@ func (cln *Client) MakeContext(ctx context.Context, request ClientRequest) (Clie
 			return nil, err
 		}
 
+		if resp.Hijacked {
+			return resp, nil
+		}
+
 		code := resp.StatusCode()
 		if code.IsRedirect() {
+			if redirectCount >= maxRedirectCount {
+				return nil, specs.NewOpError("redirect", "too many redirects")
+			}
+			redirectCount++
+
 			if (code == specs.StatusCodeMovedPermanently ||
 				code == specs.StatusCodeSeeOther ||
 				code == specs.StatusCodeFound) &&
@@ -171,20 +208,24 @@ func (cln *Client) MakeContext(ctx context.Context, request ClientRequest) (Clie
 				return nil, specs.NewOpError("redirect", "empty Location header")
 			}
 
-			baseUrl := *url
-			url, err = specs.ParseUrl(location)
+			var redirectUrl *specs.Url
+			redirectUrl, err = specs.ParseUrl(location)
 			if err != nil {
 				return nil, specs.NewOpError("redirect", "cannot parse location header url")
 			}
-			request.Header().Set("Host", url.Host)
 
-			url.Scheme = baseUrl.Scheme
-			if url.Host == "" {
-				url.Host = baseUrl.Host
+			if !(redirectUrl.Scheme == "http" || redirectUrl.Scheme == "https") || redirectUrl.Host == "" {
+				return nil, specs.NewOpError("redirect", "invalid request url '%s' scheme", url.Scheme)
 			}
-			if url.Port == 0 {
-				url.Port = baseUrl.Port
+
+			redirectUrl.Scheme = url.Scheme
+			if redirectUrl.Host == "" {
+				redirectUrl.Host = url.Host
+				redirectUrl.Port = url.Port
 			}
+			request.Header().Set("Host", redirectUrl.Host)
+			url = *redirectUrl
+
 			continue
 		}
 
@@ -192,20 +233,7 @@ func (cln *Client) MakeContext(ctx context.Context, request ClientRequest) (Clie
 	}
 }
 
-func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url *specs.Url, header *specs.Header, writer BodyWriter) (ClientResponse, error) {
-	if !(url.Scheme == "http" || url.Scheme == "https") || url.Host == "" {
-		return nil, validationErr("invalid request url '%s'", url.String())
-	}
-
-	if url.Port == 0 {
-		switch url.Scheme {
-		case "http", "":
-			url.Port = 80
-		case "https":
-			url.Port = 443
-		}
-	}
-
+func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.Url, request ClientRequest) (*client.HttpClientResponse, error) {
 	isTls := url.Scheme == "https"
 	address := url.Host + ":" + strconv.FormatUint(uint64(url.Port), 10)
 	conn, err := cln.dial(ctx, address, url.Host, isTls)
@@ -213,6 +241,10 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url *specs
 	if err != nil {
 		return nil, err
 	}
+
+	header := request.Header()
+	writer, _ := request.(BodyWriter)
+	hijacker, _ := request.(HijackRequest)
 
 	if cln.Jar != nil {
 		cln.mu.RLock()
@@ -258,7 +290,7 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url *specs
 		conn.SetWriteDeadline(time.Now().Add(cln.WriteTimeout))
 	}
 
-	_, err = writing.WriteRequestHead(conn, method, url, header)
+	_, err = writing.WriteRequestHead(conn, method, &url, header)
 
 	if err = catch.CatchCommonErr(err); err != nil {
 		conn.Close()
@@ -317,8 +349,16 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url *specs
 		cln.mu.Unlock()
 	}
 
-	if !method.CanHaveResponseBody() || !resp.StatusCode().HaveBody() || resp.StatusCode().IsRedirect() {
-		_ = conn.Close()
+	if !method.IsReplyable() || !resp.StatusCode().IsReplyable() {
+		if hijacker != nil {
+			if cln.ReadTimeout > 0 {
+				conn.SetReadDeadline(time.Time{})
+			}
+			resp.Hijacked = true
+			hijacker.Hijack(conn)
+		} else {
+			_ = conn.Close()
+		}
 	} else {
 		extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
 		reader := io.MultiReader(bytes.NewReader(extraBuffered), conn)
@@ -326,42 +366,77 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url *specs
 
 		switch resp.Header().Get("Transfer-Encoding") {
 		case "chunked":
+			if cln.MaxBodySize > 0 {
+				reader = io.LimitReader(reader, cln.MaxBodySize)
+			}
 			reader = httputil.NewChunkedReader(reader)
-		}
-
-		switch resp.Header().Get("Content-Encoding") {
-		case string(specs.GzipContentEncoding):
-			gzreader, err := gzip.NewReader(reader)
-			if err != nil {
-				return nil, &specs.GigletError{
-					Op:  "encoding",
-					Err: err,
+		default:
+			var contentLength int64
+			if cl := resp.Header().Get("Content-Length"); cl != "" {
+				contentLength, err = strconv.ParseInt(cl, 10, 64)
+				if err == nil {
+					if contentLength <= 0 {
+						reader = nil
+					} else if cln.MaxBodySize > 0 && contentLength >= cln.MaxBodySize {
+						return nil, specs.ErrTooLarge
+					}
 				}
 			}
-			reader = gzreader
-			chainedClosers = append(chainedClosers, gzreader)
+
+			if reader != nil {
+				if contentLength <= 0 && cln.MaxBodySize > 0 {
+					contentLength = cln.MaxBodySize
+				}
+
+				if contentLength > 0 {
+					reader = io.LimitReader(reader, contentLength)
+				}
+			}
 		}
 
-		var body io.ReadCloser
-		body = stream.ReadClose(func(p []byte) (int, error) {
+		if reader != nil {
+			switch resp.Header().Get("Content-Encoding") {
+			case string(specs.GzipContentEncoding):
+				gzreader, err := gzip.NewReader(reader)
+				if err != nil {
+					return nil, &specs.GigletError{
+						Op:  "encoding",
+						Err: err,
+					}
+				}
+				reader = gzreader
+				chainedClosers = append(chainedClosers, gzreader)
+			}
+
+			var body io.ReadCloser
+			body = stream.ReadClose(func(p []byte) (int, error) {
+				if err = catch.CatchContextCancel(ctx); err != nil {
+					body.Close()
+					return -1, err
+				}
+				i, err := reader.Read(p)
+				return i, catch.CatchCommonErr(err)
+			}, func() error {
+				for closer := range utils.ReverseIter(chainedClosers) {
+					err = closer.Close()
+				}
+				return err
+			})
+
+			resp.Reader = body
+
 			if err = catch.CatchContextCancel(ctx); err != nil {
 				body.Close()
-				return -1, err
+				return nil, err
 			}
-			i, err := reader.Read(p)
-			return i, catch.CatchCommonErr(err)
-		}, func() error {
-			for closer := range utils.ReverseIter(chainedClosers) {
-				err = closer.Close()
+		}
+
+		if hijacker != nil {
+			if cln.ReadTimeout > 0 {
+				conn.SetReadDeadline(time.Time{})
 			}
-			return err
-		})
-
-		resp.SetBody(body)
-
-		if err = catch.CatchContextCancel(ctx); err != nil {
-			body.Close()
-			return nil, err
+			resp.Hijacked = true
+			hijacker.Hijack(conn)
 		}
 	}
 
