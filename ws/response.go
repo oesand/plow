@@ -2,6 +2,7 @@ package ws
 
 import (
 	"bufio"
+	"context"
 	"github.com/oesand/giglet"
 	"github.com/oesand/giglet/internal/utils/stream"
 	"github.com/oesand/giglet/specs"
@@ -44,7 +45,7 @@ func UpgradeResponse(req giglet.Request, handler Handler) giglet.Response {
 		}
 	}
 
-	req.Hijack(func(conn net.Conn) {
+	req.Hijack(func(ctx context.Context, conn net.Conn) {
 		reader := stream.DefaultBufioReaderPool.Get(conn)
 		defer stream.DefaultBufioReaderPool.Put(reader)
 
@@ -54,7 +55,7 @@ func UpgradeResponse(req giglet.Request, handler Handler) giglet.Response {
 		rws := bufio.NewReadWriter(reader, writer)
 		wsConn := newServerConn(req, conn, rws)
 
-		handler(wsConn)
+		handler(ctx, wsConn)
 		wsConn.dead = true
 	})
 

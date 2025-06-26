@@ -8,8 +8,6 @@ import (
 	"io"
 )
 
-type Handler func(conn Conn)
-
 type WsFrameType byte
 
 const (

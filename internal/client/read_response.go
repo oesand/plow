@@ -10,7 +10,7 @@ import (
 )
 
 func ReadResponse(ctx context.Context, reader *bufio.Reader, lineLimit int64, totalLimit int64) (*HttpClientResponse, error) {
-	line, err := stream.ReadBufferLine(reader, 128)
+	line, err := stream.ReadBufferLine(reader, lineLimit)
 	if err != nil {
 		return nil, err
 	}

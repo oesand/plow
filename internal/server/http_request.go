@@ -8,14 +8,13 @@ import (
 	"net"
 )
 
-type HijackHandler func(conn net.Conn)
+type HijackHandler func(ctx context.Context, conn net.Conn)
 
 type HttpRequest struct {
 	_ utils.NoCopy
 
 	conn     net.Conn
 	hijacker HijackHandler
-	context  context.Context
 
 	protoMajor, protoMinor uint16
 	method                 specs.HttpMethod
@@ -24,17 +23,6 @@ type HttpRequest struct {
 
 	BodyReader       io.Reader
 	SelectedEncoding specs.ContentEncoding
-}
-
-func (req *HttpRequest) Context() context.Context {
-	return req.context
-}
-
-func (req *HttpRequest) WithContext(context context.Context) {
-	if context == nil {
-		panic("nil Context pointer")
-	}
-	req.context = context
 }
 
 func (req *HttpRequest) ProtoVersion() (major, minor uint16) {

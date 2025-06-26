@@ -37,14 +37,20 @@ func CatchCommonErr(err error) error {
 
 func CatchContextCancel(ctx context.Context) error {
 	err := ctx.Err()
+	if err == nil {
+		return nil
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return specs.ErrTimeout
 	}
 	if errors.Is(err, context.Canceled) {
 		return specs.ErrCancelled
 	}
-	return &specs.GigletError{
-		Op:  "cause",
-		Err: err,
+	if _, ok := err.(*specs.GigletError); !ok {
+		return &specs.GigletError{
+			Op:  "cause",
+			Err: err,
+		}
 	}
+	return err
 }

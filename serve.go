@@ -102,10 +102,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 	}
 
 	if tlsConn, ok := conn.(*tls.Conn); ok {
-		_, err := catch.CallWithTimeoutContext(ctx, srv.TLSHandshakeTimeout, func(ctx context.Context) (struct{}, error) {
-			err := tlsConn.HandshakeContext(ctx)
-			return struct{}{}, err
-		})
+		err := catch.CallWithTimeoutContextErr(ctx, srv.TLSHandshakeTimeout, tlsConn.HandshakeContext)
 
 		if err != nil {
 			// If the handshake failed due to the client not speaking
@@ -148,7 +145,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 		if srv.ReadTimeout > 0 {
 			conn.SetReadDeadline(time.Now().Add(srv.ReadTimeout))
 		}
-		req, err := server.ReadRequest(ctx, conn, headerReader, srv.ReadLineMaxLength, srv.HeadMaxLength)
+		req, err := server.ReadRequest(ctx, headerReader, srv.ReadLineMaxLength, srv.HeadMaxLength)
 
 		if err != nil {
 			stream.DefaultBufioReaderPool.Put(headerReader)
@@ -176,7 +173,6 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 
 			reader := io.MultiReader(bytes.NewReader(extraBuffered), conn)
 
-			////
 			if encoding, has := req.Header().TryGet("Transfer-Encoding"); has {
 				switch encoding {
 				case "chunked":
@@ -231,7 +227,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 			break
 		}
 
-		resp := handler(req)
+		resp := handler(ctx, req)
 		var header *specs.Header
 		var code specs.StatusCode
 		var writable BodyWriter
@@ -318,7 +314,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 		if srv.catchCancelled(ctx) {
 			break
 		} else if hijacker := req.Hijacker(); hijacker != nil {
-			hijacker(conn)
+			hijacker(ctx, conn)
 			break
 		} else if req.Method() != specs.HttpMethodHead && writable == nil && code.IsReplyable() {
 			break

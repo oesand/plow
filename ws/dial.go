@@ -116,5 +116,5 @@ func dial(ctx context.Context, client *giglet.Client, url *specs.Url, conf *Dial
 	writer := stream.DefaultBufioWriterPool.Get(conn)
 	rws := bufio.NewReadWriter(reader, writer)
 
-	return newClientConn(ctx, *url, conn, rws), nil
+	return newClientConn(*url, conn, rws), nil
 }

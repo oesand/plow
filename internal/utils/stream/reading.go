@@ -10,10 +10,7 @@ func ReadBufferLine(reader *bufio.Reader, limit int64) ([]byte, error) {
 	for {
 		l, more, err := reader.ReadLine()
 		if err != nil {
-			return nil, &specs.GigletError{
-				Op:  "read",
-				Err: err,
-			}
+			return nil, err
 		} else if limit > 0 && int64(len(line))+int64(len(l)) > limit {
 			return nil, specs.ErrTooLarge
 		} else if line == nil && !more {

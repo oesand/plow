@@ -2,7 +2,6 @@ package ws
 
 import (
 	"bufio"
-	"context"
 	"github.com/oesand/giglet"
 	"github.com/oesand/giglet/specs"
 	"net"
@@ -21,17 +20,6 @@ type wsServerConn struct {
 	frameHandler
 	request giglet.Request
 	conn    net.Conn
-}
-
-func (conn *wsServerConn) Context() context.Context {
-	return conn.request.Context()
-}
-
-func (conn *wsServerConn) WithContext(context context.Context) {
-	if context == nil {
-		panic("nil Context pointer")
-	}
-	conn.request.WithContext(context)
 }
 
 func (conn *wsServerConn) RemoteAddr() net.Addr {

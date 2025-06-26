@@ -7,10 +7,9 @@ import (
 	"time"
 )
 
-type Conn interface {
-	Context() context.Context
-	WithContext(context context.Context)
+type Handler func(ctx context.Context, conn Conn)
 
+type Conn interface {
 	RemoteAddr() net.Addr
 	Url() *specs.Url
 

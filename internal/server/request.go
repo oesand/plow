@@ -10,12 +10,11 @@ import (
 	"github.com/oesand/giglet/internal/utils/stream"
 	"github.com/oesand/giglet/specs"
 	"golang.org/x/net/http/httpguts"
-	"net"
 	"strings"
 )
 
 func ReadRequest(
-	ctx context.Context, conn net.Conn, reader *bufio.Reader,
+	ctx context.Context, reader *bufio.Reader,
 	lineLimit int64, totalLimit int64,
 ) (*HttpRequest, error) {
 	select {
@@ -65,7 +64,6 @@ func ReadRequest(
 	}
 
 	if err = catch.CatchContextCancel(ctx); err != nil {
-		conn.Close()
 		return nil, err
 	}
 
@@ -80,7 +78,7 @@ func ReadRequest(
 		return nil, err
 	}
 
-	if protoMajor > 1 || (protoMajor == 1 && protoMinor >= 0) { // [FEATURE]: Add chunked transfer
+	if protoMajor > 1 || (protoMajor == 1 && protoMinor >= 0) {
 		if raw, has := header.TryGet("Transfer-Encoding"); has && len(raw) > 0 && !strings.EqualFold(raw, "chunked") {
 			return nil, &ErrorResponse{
 				Code: specs.StatusCodeNotImplemented,
@@ -107,10 +105,10 @@ func ReadRequest(
 
 	var selectedEncoding specs.ContentEncoding
 
-	if encoding, has := header.TryGet("Accept-Encoding"); has {
+	if encoding, has := header.TryGet("Accept-Encoding"); has { // TODO : Add more encodings
 		variants := strings.Split(encoding, ",")
 		for _, variant := range variants {
-			if strings.Contains(strings.ToLower(variant), "gzip") {
+			if strings.HasPrefix(strings.ToLower(variant), "gzip") {
 				selectedEncoding = specs.GzipContentEncoding
 				break
 			}
@@ -128,7 +126,6 @@ func ReadRequest(
 		protoMajor: protoMajor,
 		protoMinor: protoMinor,
 		url:        url,
-		context:    ctx,
 		header:     header,
 
 		SelectedEncoding: selectedEncoding,

@@ -2,17 +2,15 @@ package ws
 
 import (
 	"bufio"
-	"context"
 	"github.com/oesand/giglet/internal/utils/stream"
 	"github.com/oesand/giglet/specs"
 	"net"
 	"time"
 )
 
-func newClientConn(ctx context.Context, url specs.Url, conn net.Conn, rws *bufio.ReadWriter) *wsClientConn {
+func newClientConn(url specs.Url, conn net.Conn, rws *bufio.ReadWriter) *wsClientConn {
 	return &wsClientConn{
 		frameHandler: *newFrameHandler(rws, false),
-		ctx:          ctx,
 		url:          &url,
 		conn:         conn,
 	}
@@ -20,21 +18,9 @@ func newClientConn(ctx context.Context, url specs.Url, conn net.Conn, rws *bufio
 
 type wsClientConn struct {
 	frameHandler
-	ctx    context.Context
 	url    *specs.Url
 	conn   net.Conn
 	closed bool
-}
-
-func (conn *wsClientConn) Context() context.Context {
-	return conn.ctx
-}
-
-func (conn *wsClientConn) WithContext(context context.Context) {
-	if context == nil {
-		panic("nil Context pointer")
-	}
-	conn.ctx = context
 }
 
 func (conn *wsClientConn) RemoteAddr() net.Addr {

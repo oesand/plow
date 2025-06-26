@@ -9,14 +9,11 @@ import (
 	"net"
 )
 
-type Handler func(request Request) Response
+type Handler func(ctx context.Context, request Request) Response
 type HijackHandler = server.HijackHandler
 type NextProtoHandler func(conn *tls.Conn)
 
 type Request interface {
-	Context() context.Context
-	WithContext(context context.Context)
-
 	ProtoVersion() (major, minor uint16)
 	RemoteAddr() net.Addr
 	Hijack(handler HijackHandler)
