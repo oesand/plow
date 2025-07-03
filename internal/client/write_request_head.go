@@ -1,9 +1,17 @@
-package writing
+package client
 
 import (
 	"bytes"
 	"github.com/oesand/giglet/specs"
 	"io"
+)
+
+var (
+	rawColonSpace      = []byte(": ")
+	rawCookieDelimiter = []byte("; ")
+	rawCookie          = []byte("Cookie: ")
+	rawCrlf            = []byte("\r\n")
+	httpV11            = []byte("HTTP/1.1")
 )
 
 func WriteRequestHead(writer io.Writer, method specs.HttpMethod, url *specs.Url, header *specs.Header) (int64, error) {

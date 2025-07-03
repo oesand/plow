@@ -2,7 +2,7 @@ package ws
 
 import (
 	"bufio"
-	"github.com/oesand/giglet/internal/utils/stream"
+	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
 	"net"
 	"time"

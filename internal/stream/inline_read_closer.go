@@ -1,13 +1,13 @@
 package stream
 
 import (
-	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal"
 	"github.com/oesand/giglet/specs"
 	"io"
 	"sync/atomic"
 )
 
-func ReadClose(reading utils.Reading, closing utils.Closing) io.ReadCloser {
+func ReadClose(reading internal.Reading, closing internal.Closing) io.ReadCloser {
 	if reading == nil {
 		panic("giglet/internal: reader cannot be empty")
 	}
@@ -20,8 +20,8 @@ func ReadClose(reading utils.Reading, closing utils.Closing) io.ReadCloser {
 
 type readClose struct {
 	closed  atomic.Bool
-	reading utils.Reading
-	closing utils.Closing
+	reading internal.Reading
+	closing internal.Closing
 }
 
 func (comb *readClose) Read(p []byte) (int, error) {

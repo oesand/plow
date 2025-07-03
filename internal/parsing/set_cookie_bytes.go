@@ -1,9 +1,21 @@
-package writing
+package parsing
 
 import (
 	"bytes"
 	"github.com/oesand/giglet/specs"
 	"strconv"
+)
+
+var (
+	rawCookieDelimiter = []byte("; ")
+
+	rawCookieKeyExpires  = []byte("Expires")
+	rawCookieKeyDomain   = []byte("Domain")
+	rawCookieKeyPath     = []byte("Path")
+	rawCookieKeyHTTPOnly = []byte("HttpOnly")
+	rawCookieKeySecure   = []byte("Secure")
+	rawCookieKeyMaxAge   = []byte("Max-Age")
+	rawCookieKeySameSite = []byte("SameSite")
 )
 
 func SetCookieBytes(cookie *specs.Cookie) []byte {

@@ -1,4 +1,4 @@
-package writing
+package parsing
 
 import (
 	"github.com/oesand/giglet/specs"

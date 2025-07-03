@@ -1,13 +1,13 @@
 package stream
 
 import (
-	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal"
 	"github.com/oesand/giglet/specs"
 	"io"
 	"sync/atomic"
 )
 
-func Closer(closing utils.Closing) io.Closer {
+func Closer(closing internal.Closing) io.Closer {
 	return &closer{
 		closing: closing,
 	}
@@ -15,7 +15,7 @@ func Closer(closing utils.Closing) io.Closer {
 
 type closer struct {
 	closed  atomic.Bool
-	closing utils.Closing
+	closing internal.Closing
 }
 
 func (comb *closer) Close() error {

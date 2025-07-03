@@ -1,13 +1,13 @@
 package giglet
 
 import (
-	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal"
 	"github.com/oesand/giglet/specs"
 	"io"
 	"strconv"
 )
 
-func EmptyResponse(contentType specs.ContentType, configure ...func(response Response)) Response {
+func NewEmptyResponse(contentType specs.ContentType, configure ...func(response Response)) Response {
 	resp := &HeaderResponse{}
 
 	if contentType != specs.ContentTypeUndefined {
@@ -21,14 +21,14 @@ func EmptyResponse(contentType specs.ContentType, configure ...func(response Res
 	return resp
 }
 
-func RedirectResponse(url string) Response {
+func NewRedirectResponse(url string) Response {
 	resp := &HeaderResponse{}
 	resp.SetStatusCode(specs.StatusCodeTemporaryRedirect)
 	resp.Header().Set("Location", url)
 	return resp
 }
 
-func PermanentRedirectResponse(url string) Response {
+func NewPermanentRedirectResponse(url string) Response {
 	resp := &HeaderResponse{}
 	resp.SetStatusCode(specs.StatusCodePermanentRedirect)
 	resp.Header().Set("Location", url)
@@ -36,7 +36,7 @@ func PermanentRedirectResponse(url string) Response {
 }
 
 type HeaderResponse struct {
-	_ utils.NoCopy
+	_ internal.NoCopy
 
 	statusCode specs.StatusCode
 	header     *specs.Header
@@ -60,7 +60,7 @@ func (resp *HeaderResponse) Header() *specs.Header {
 	return resp.header
 }
 
-func BufferResponse(buffer []byte, contentType specs.ContentType, configure ...func(response Response)) Response {
+func NewBufferResponse(buffer []byte, contentType specs.ContentType, configure ...func(response Response)) Response {
 	resp := &bufferResponse{buffer: buffer}
 
 	if contentType == specs.ContentTypeUndefined {
@@ -76,11 +76,11 @@ func BufferResponse(buffer []byte, contentType specs.ContentType, configure ...f
 	return resp
 }
 
-func TextResponse(text string, contentType specs.ContentType, configure ...func(response Response)) Response {
+func NewTextResponse(text string, contentType specs.ContentType, configure ...func(response Response)) Response {
 	if contentType == specs.ContentTypeUndefined {
 		contentType = specs.ContentTypePlain
 	}
-	return BufferResponse(utils.StringToBuffer(text), contentType, configure...)
+	return NewBufferResponse(internal.StringToBuffer(text), contentType, configure...)
 }
 
 type bufferResponse struct {
@@ -93,7 +93,7 @@ func (resp *bufferResponse) WriteBody(writer io.Writer) error {
 	return err
 }
 
-func StreamResponse(stream io.Reader, size uint64, contentType specs.ContentType, configure ...func(response Response)) Response {
+func NewStreamResponse(stream io.Reader, size uint64, contentType specs.ContentType, configure ...func(response Response)) Response {
 	resp := &streamResponse{stream: stream}
 	if contentType == specs.ContentTypeUndefined {
 		contentType = specs.ContentTypeRaw

@@ -2,14 +2,13 @@ package giglet
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"errors"
 	"github.com/oesand/giglet/internal/catch"
+	"github.com/oesand/giglet/internal/encoding"
 	"github.com/oesand/giglet/internal/server"
-	"github.com/oesand/giglet/internal/utils/stream"
-	"github.com/oesand/giglet/internal/writing"
+	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
 	"io"
 	"net"
@@ -170,30 +169,14 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 
 		if req.Method().IsPostable() {
 			extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
-
 			reader := io.MultiReader(bytes.NewReader(extraBuffered), conn)
 
-			if encoding, has := req.Header().TryGet("Transfer-Encoding"); has {
-				switch encoding {
-				case "chunked":
-					if srv.MaxBodySize > 0 {
-						reader = io.LimitReader(reader, srv.MaxBodySize)
-					}
-					reader = httputil.NewChunkedReader(reader)
-				}
-			} else if raw, has := req.Header().TryGet("Content-Length"); has && len(raw) > 0 {
-				if contentLength, err := strconv.ParseInt(raw, 10, 64); err != nil {
-					reader = io.LimitReader(reader, contentLength)
-				}
-			}
-
-			switch req.Header().Get("Transfer-Encoding") {
-			case "chunked":
+			if req.Chunked {
 				if srv.MaxBodySize > 0 {
 					reader = io.LimitReader(reader, srv.MaxBodySize)
 				}
 				reader = httputil.NewChunkedReader(reader)
-			default:
+			} else {
 				var contentLength int64
 				if cl := req.Header().Get("Content-Length"); cl != "" {
 					contentLength, err = strconv.ParseInt(cl, 10, 64)
@@ -252,6 +235,17 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 
 		header.Set("Date", time.Now().Format(specs.TimeFormat))
 
+		if req.SelectedEncoding != specs.UnknownContentEncoding {
+			header.Set("Content-Encoding", req.SelectedEncoding)
+		}
+
+		if req.Chunked {
+			header.Set("Transfer-Encoding", "chunked")
+			if header.Has("Content-Length") {
+				header.Del("Content-Length")
+			}
+		}
+
 		if !code.IsValid() {
 			if !req.Method().IsReplyable() || writable == nil {
 				code = specs.StatusCodeNoContent
@@ -266,7 +260,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 		if srv.WriteTimeout > 0 {
 			conn.SetWriteDeadline(time.Now().Add(srv.WriteTimeout))
 		}
-		_, err = writing.WriteResponseHead(conn, isHttp11, code, header)
+		_, err = server.WriteResponseHead(conn, isHttp11, code, header)
 
 		if err != nil {
 			if srv.Debug {
@@ -280,25 +274,15 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 		}
 
 		if req.Method().IsReplyable() && code.IsReplyable() && writable != nil {
-			var writer io.Writer = conn
-			var encodingCloser io.Closer
-
-			switch req.SelectedEncoding {
-			case specs.GzipContentEncoding:
-				gzw := gzip.NewWriter(writer)
-				writer = gzw
-				encodingCloser = gzw
-			}
-
-			if req.SelectedEncoding != specs.UnknownContentEncoding {
-				resp.Header().Set("Content-Encoding", string(req.SelectedEncoding))
-			}
+			writer, err := encoding.ReadWriterBuilder{
+				Encoding: req.SelectedEncoding,
+				Chunked:  req.Chunked,
+			}.NewWriter(conn)
 
 			err = writable.WriteBody(writer)
 
-			if err == nil && encodingCloser != nil {
-				err = encodingCloser.Close()
-			}
+			writer.Close()
+
 			if err != nil {
 				if srv.Debug {
 					srv.logger().Printf("giglet: error to send body to '%s': %v", conn.RemoteAddr(), err)

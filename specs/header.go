@@ -1,8 +1,8 @@
 package specs
 
 import (
-	"github.com/oesand/giglet/internal/utils"
-	"github.com/oesand/giglet/internal/utils/plain"
+	"github.com/oesand/giglet/internal"
+	"github.com/oesand/giglet/internal/plain"
 	"iter"
 )
 
@@ -17,7 +17,7 @@ func NewHeader(configure ...func(header *Header)) *Header {
 }
 
 type Header struct {
-	_ utils.NoCopy
+	_ internal.NoCopy
 
 	headers map[string]string
 	cookies map[string]*Cookie
@@ -66,9 +66,9 @@ func (header *Header) Del(name string) {
 
 func (header *Header) All() iter.Seq2[string, string] {
 	if !header.Any() {
-		return utils.EmptyIterSeq2[string, string]()
+		return internal.EmptyIterSeq2[string, string]()
 	}
-	return utils.IterMapSorted(header.headers)
+	return internal.IterMapSorted(header.headers)
 }
 
 func (header *Header) AnyCookies() bool {
@@ -116,10 +116,10 @@ func (header *Header) SetCookieValue(name, value string) {
 
 func (header *Header) Cookies() iter.Seq[Cookie] {
 	if !header.AnyCookies() {
-		return utils.EmptyIterSeq[Cookie]()
+		return internal.EmptyIterSeq[Cookie]()
 	}
 
-	if utils.IsNotTesting {
+	if internal.IsNotTesting {
 		return func(yield func(Cookie) bool) {
 			for _, cookie := range header.cookies {
 				if !yield(*cookie) {
@@ -129,7 +129,7 @@ func (header *Header) Cookies() iter.Seq[Cookie] {
 		}
 	}
 
-	keys := utils.IterKeysSorted(header.cookies)
+	keys := internal.IterKeysSorted(header.cookies)
 	return func(yield func(Cookie) bool) {
 		for k := range keys {
 			if !yield(*header.cookies[k]) {

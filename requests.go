@@ -1,7 +1,7 @@
 package giglet
 
 import (
-	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal"
 	"github.com/oesand/giglet/specs"
 	"io"
 	"net"
@@ -20,7 +20,7 @@ func newRequest(method specs.HttpMethod, url *specs.Url) *clientRequest {
 }
 
 type clientRequest struct {
-	_ utils.NoCopy
+	_ internal.NoCopy
 
 	method specs.HttpMethod
 	url    specs.Url

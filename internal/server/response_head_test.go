@@ -1,4 +1,4 @@
-package writing
+package server
 
 import (
 	"bytes"
@@ -22,7 +22,7 @@ func TestWriteResponseHead(t *testing.T) {
 			code: specs.StatusCodeOK,
 			header: specs.NewHeader(func(header *specs.Header) {
 				header.Set("Header", "Value")
-				header.Set("Content-Type", "plain/html")
+				header.Set("Content-Type", "text/html")
 				header.SetCookieValue("Cookie", "Value")
 				header.SetCookie(specs.Cookie{
 					Name:     "sessionid",
@@ -38,7 +38,7 @@ func TestWriteResponseHead(t *testing.T) {
 			}),
 			expected: strings.Join([]string{
 				"HTTP/1.1 200 OK",
-				"Content-Type: plain/html",
+				"Content-Type: text/html",
 				"Header: Value",
 				"Set-Cookie: Cookie=Value",
 				"Set-Cookie: sessionid=abc123; Max-Age=3600; Domain=example.com; Path=/home; HttpOnly; Secure; SameSite=Strict",
@@ -49,12 +49,12 @@ func TestWriteResponseHead(t *testing.T) {
 			is11: false,
 			code: specs.StatusCodeNotFound,
 			header: specs.NewHeader(func(header *specs.Header) {
-				header.Set("Content-Type", "plain/html")
+				header.Set("Content-Type", "text/html")
 				header.SetCookieValue("sessionid", "xyz123")
 			}),
 			expected: strings.Join([]string{
 				"HTTP/1.0 404 Not Found",
-				"Content-Type: plain/html",
+				"Content-Type: text/html",
 				"Set-Cookie: sessionid=xyz123",
 			}, "\r\n") + "\r\n\r\n",
 		},

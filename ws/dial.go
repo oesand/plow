@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/oesand/giglet"
-	"github.com/oesand/giglet/internal/utils/stream"
+	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
 	"slices"
 	"strings"

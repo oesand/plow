@@ -1,7 +1,7 @@
 package specs
 
 import (
-	"github.com/oesand/giglet/internal/utils/plain"
+	"github.com/oesand/giglet/internal/plain"
 	"strconv"
 	"strings"
 )

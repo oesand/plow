@@ -1,13 +1,12 @@
 package server
 
 import (
-	"github.com/oesand/giglet/internal/writing"
 	"github.com/oesand/giglet/specs"
 	"io"
 )
 
 var closeHeaders = specs.NewHeader(func(header *specs.Header) {
-	header.Set("Content-Type", "plain/plain; charset=utf-8")
+	header.Set("Content-Type", "text/plain; charset=utf-8")
 	header.Set("Connection", "close")
 })
 
@@ -21,7 +20,7 @@ func (resp *ErrorResponse) Error() string {
 }
 
 func (resp *ErrorResponse) WriteTo(writer io.Writer) error {
-	_, err := writing.WriteResponseHead(writer, false, resp.Code, closeHeaders)
+	_, err := WriteResponseHead(writer, false, resp.Code, closeHeaders)
 	if err != nil {
 		return err
 	}

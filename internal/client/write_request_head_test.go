@@ -1,4 +1,4 @@
-package writing
+package client
 
 import (
 	"bytes"

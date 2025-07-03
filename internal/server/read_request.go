@@ -6,8 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/oesand/giglet/internal/catch"
+	"github.com/oesand/giglet/internal/encoding"
 	"github.com/oesand/giglet/internal/parsing"
-	"github.com/oesand/giglet/internal/utils/stream"
+	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
 	"golang.org/x/net/http/httpguts"
 	"strings"
@@ -78,8 +79,10 @@ func ReadRequest(
 		return nil, err
 	}
 
+	var chunkedEncoding bool
 	if protoMajor > 1 || (protoMajor == 1 && protoMinor >= 0) {
-		if raw, has := header.TryGet("Transfer-Encoding"); has && len(raw) > 0 && !strings.EqualFold(raw, "chunked") {
+		chunkedEncoding, err = encoding.IsChunkedEncoding(header)
+		if err != nil {
 			return nil, &ErrorResponse{
 				Code: specs.StatusCodeNotImplemented,
 				Text: "http: unsupported transfer encoding",
@@ -103,13 +106,13 @@ func ReadRequest(
 		header.Set("Cache-Control", "no-cache")
 	}
 
-	var selectedEncoding specs.ContentEncoding
+	var selectedEncoding string
 
-	if encoding, has := header.TryGet("Accept-Encoding"); has { // TODO : Add more encodings
-		variants := strings.Split(encoding, ",")
+	if acceptEncoding, has := header.TryGet("Accept-Encoding"); has {
+		variants := strings.Split(acceptEncoding, ", ")
 		for _, variant := range variants {
-			if strings.HasPrefix(strings.ToLower(variant), "gzip") {
-				selectedEncoding = specs.GzipContentEncoding
+			if encoding.IsKnownEncoding(variant) {
+				selectedEncoding = variant
 				break
 			}
 		}
@@ -127,6 +130,7 @@ func ReadRequest(
 		protoMinor: protoMinor,
 		url:        url,
 		header:     header,
+		Chunked:    chunkedEncoding,
 
 		SelectedEncoding: selectedEncoding,
 	}

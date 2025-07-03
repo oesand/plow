@@ -1,10 +1,20 @@
-package writing
+package server
 
 import (
 	"bytes"
+	"github.com/oesand/giglet/internal/parsing"
 	"github.com/oesand/giglet/specs"
 	"io"
 	"strconv"
+)
+
+var (
+	rawColonSpace = []byte(": ")
+	rawSetCookie  = []byte("Set-Cookie: ")
+	rawCrlf       = []byte("\r\n")
+
+	httpV10 = []byte("HTTP/1.0")
+	httpV11 = []byte("HTTP/1.1")
 )
 
 func WriteResponseHead(writer io.Writer, is11 bool, code specs.StatusCode, header *specs.Header) (int64, error) {
@@ -37,7 +47,7 @@ func WriteResponseHead(writer io.Writer, is11 bool, code specs.StatusCode, heade
 
 	for cookie := range header.Cookies() {
 		buf.Write(rawSetCookie)
-		buf.Write(SetCookieBytes(&cookie))
+		buf.Write(parsing.SetCookieBytes(&cookie))
 		buf.Write(rawCrlf)
 	}
 

@@ -5,7 +5,7 @@ import (
 	"context"
 	"github.com/oesand/giglet/internal/catch"
 	"github.com/oesand/giglet/internal/parsing"
-	"github.com/oesand/giglet/internal/utils/stream"
+	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
 )
 

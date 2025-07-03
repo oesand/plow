@@ -190,6 +190,12 @@ func Test_ParseHeaderKVLine(t *testing.T) {
 			wantValue: []byte("nginx"),
 		},
 		{
+			name:      "Location header",
+			line:      []byte("Location: http://example.org/test?key=value#fragment"),
+			wantKey:   []byte("Location"),
+			wantValue: []byte("http://example.org/test?key=value#fragment"),
+		},
+		{
 			name:      "Value with tab padding",
 			line:      []byte("X: \t  val\t\t "),
 			wantKey:   []byte("X"),

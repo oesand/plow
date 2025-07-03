@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"context"
 	"github.com/oesand/giglet/internal/catch"
-	"github.com/oesand/giglet/internal/utils/stream"
+	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
 	"io"
 )
@@ -130,8 +130,6 @@ func parseHeaderKVLine(line []byte) ([]byte, []byte, bool) {
 			k = append(k, b)
 		} else {
 			switch b {
-			case ':':
-				return nil, nil, false
 			case ' ', '\t':
 				continue
 			}

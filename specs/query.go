@@ -1,8 +1,8 @@
 package specs
 
 import (
-	"github.com/oesand/giglet/internal/utils"
-	"github.com/oesand/giglet/internal/utils/plain"
+	"github.com/oesand/giglet/internal"
+	"github.com/oesand/giglet/internal/plain"
 	"net/url"
 	"strings"
 )
@@ -46,7 +46,7 @@ func (q Query) String() string {
 		return ""
 	}
 	var buf strings.Builder
-	for k, v := range utils.IterMapSorted(q) {
+	for k, v := range internal.IterMapSorted(q) {
 		if buf.Len() > 0 {
 			buf.WriteByte('&')
 		}

@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"context"
 	"github.com/oesand/giglet"
-	"github.com/oesand/giglet/internal/utils/stream"
+	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
 	"net"
 	"strings"
@@ -12,26 +12,26 @@ import (
 
 func UpgradeResponse(req giglet.Request, handler Handler) giglet.Response {
 	if req.Method() != specs.HttpMethodGet {
-		return giglet.TextResponse("websocket: upgrading required request method - GET", specs.ContentTypePlain, func(response giglet.Response) {
+		return giglet.NewTextResponse("websocket: upgrading required request method - GET", specs.ContentTypePlain, func(response giglet.Response) {
 			response.SetStatusCode(specs.StatusCodeMethodNotAllowed)
 		})
 	} else if !strings.EqualFold(req.Header().Get("Connection"), "upgrade") {
-		return giglet.TextResponse("websocket: 'Upgrade' token not found in 'Connection' header", specs.ContentTypePlain, func(response giglet.Response) {
+		return giglet.NewTextResponse("websocket: 'Upgrade' token not found in 'Connection' header", specs.ContentTypePlain, func(response giglet.Response) {
 			response.SetStatusCode(specs.StatusCodeBadRequest)
 		})
 	} else if !strings.EqualFold(req.Header().Get("Upgrade"), "websocket") {
-		return giglet.TextResponse("websocket: 'websocket' token not found in 'Upgrade' header", specs.ContentTypePlain, func(response giglet.Response) {
+		return giglet.NewTextResponse("websocket: 'websocket' token not found in 'Upgrade' header", specs.ContentTypePlain, func(response giglet.Response) {
 			response.SetStatusCode(specs.StatusCodeBadRequest)
 		})
 	} else if req.Header().Get("Sec-Websocket-Version") != "13" {
-		return giglet.TextResponse("websocket: supports only websocket 13 version", specs.ContentTypePlain, func(response giglet.Response) {
+		return giglet.NewTextResponse("websocket: supports only websocket 13 version", specs.ContentTypePlain, func(response giglet.Response) {
 			response.SetStatusCode(specs.StatusCodeNotImplemented)
 		})
 	}
 
 	challengeKey := req.Header().Get("Sec-Websocket-Key")
 	if len(challengeKey) == 0 {
-		return giglet.TextResponse("websocket: not a websocket handshake: `Sec-WebSocket-Key' header is missing or blank", specs.ContentTypePlain, func(response giglet.Response) {
+		return giglet.NewTextResponse("websocket: not a websocket handshake: `Sec-WebSocket-Key' header is missing or blank", specs.ContentTypePlain, func(response giglet.Response) {
 			response.SetStatusCode(specs.StatusCodeBadRequest)
 		})
 	}
@@ -59,7 +59,7 @@ func UpgradeResponse(req giglet.Request, handler Handler) giglet.Response {
 		wsConn.dead = true
 	})
 
-	return giglet.EmptyResponse(specs.ContentTypeUndefined, func(resp giglet.Response) {
+	return giglet.NewEmptyResponse(specs.ContentTypeUndefined, func(resp giglet.Response) {
 		resp.SetStatusCode(specs.StatusCodeSwitchingProtocols)
 		resp.Header().Set("Upgrade", "websocket")
 		resp.Header().Set("Connection", "Upgrade")

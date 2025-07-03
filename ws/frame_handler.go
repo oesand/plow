@@ -3,7 +3,7 @@ package ws
 import (
 	"bufio"
 	"encoding/binary"
-	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal"
 	"github.com/oesand/giglet/specs"
 	"io"
 	"sync"
@@ -17,7 +17,7 @@ func newFrameHandler(rws *bufio.ReadWriter, isServer bool) *frameHandler {
 }
 
 type frameHandler struct {
-	_ utils.NoCopy
+	_ internal.NoCopy
 
 	rws      *bufio.ReadWriter
 	isServer bool
@@ -87,6 +87,7 @@ func (fr *frameHandler) pickFrame() (*frameData, error) {
 	case wsContinuationFrame:
 		frame.Code = wsBinaryFrame
 	case wsTextFrame, wsBinaryFrame:
+		break
 	case wsCloseFrame:
 		fr.dead = true
 		return nil, specs.ErrClosed

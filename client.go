@@ -2,21 +2,17 @@ package giglet
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"fmt"
 	"github.com/oesand/giglet/internal/catch"
 	"github.com/oesand/giglet/internal/client"
-	"github.com/oesand/giglet/internal/utils"
-	"github.com/oesand/giglet/internal/utils/stream"
-	"github.com/oesand/giglet/internal/writing"
+	"github.com/oesand/giglet/internal/encoding"
+	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
 	"io"
 	"net"
-	"net/http/httputil"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -126,18 +122,21 @@ type Client struct {
 }
 
 func (cln *Client) Make(request ClientRequest) (ClientResponse, error) {
+	if request == nil {
+		panic("nil request pointer")
+	}
 	return cln.MakeContext(context.Background(), request)
 }
 
 func (cln *Client) MakeContext(ctx context.Context, request ClientRequest) (ClientResponse, error) {
 	if cln == nil {
-		panic("nil Client pointer")
+		panic("nil client pointer")
 	}
 	if ctx == nil {
-		panic("nil Context pointer")
+		panic("nil context pointer")
 	}
 	if request == nil {
-		panic("nil Request pointer")
+		panic("nil request pointer")
 	}
 
 	url := request.Url()
@@ -145,8 +144,12 @@ func (cln *Client) MakeContext(ctx context.Context, request ClientRequest) (Clie
 		url.Scheme = "https"
 	}
 
-	if !(url.Scheme == "http" || url.Scheme == "https") || url.Host == "" {
-		panic(fmt.Sprintf("invalid request url '%s'", url))
+	if !(url.Scheme == "http" || url.Scheme == "https") {
+		panic(fmt.Sprintf("invalid request url '%s' scheme", url.Scheme))
+	}
+
+	if url.Host == "" {
+		panic("empty request url host")
 	}
 
 	if url.Port == 0 {
@@ -214,7 +217,7 @@ func (cln *Client) MakeContext(ctx context.Context, request ClientRequest) (Clie
 				return nil, specs.NewOpError("redirect", "cannot parse location header url")
 			}
 
-			if !(redirectUrl.Scheme == "http" || redirectUrl.Scheme == "https") || redirectUrl.Host == "" {
+			if !(redirectUrl.Scheme == "" || redirectUrl.Scheme == "http" || redirectUrl.Scheme == "https") {
 				return nil, specs.NewOpError("redirect", "invalid request url '%s' scheme", url.Scheme)
 			}
 
@@ -234,14 +237,6 @@ func (cln *Client) MakeContext(ctx context.Context, request ClientRequest) (Clie
 }
 
 func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.Url, request ClientRequest) (*client.HttpClientResponse, error) {
-	isTls := url.Scheme == "https"
-	address := url.Host + ":" + strconv.FormatUint(uint64(url.Port), 10)
-	conn, err := cln.dial(ctx, address, url.Host, isTls)
-
-	if err != nil {
-		return nil, err
-	}
-
 	header := request.Header()
 	writer, _ := request.(BodyWriter)
 	hijacker, _ := request.(HijackRequest)
@@ -249,7 +244,9 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 	if cln.Jar != nil {
 		cln.mu.RLock()
 		for cookie := range cln.Jar.Cookies(url.Host) {
-			header.SetCookie(cookie)
+			if !header.HasCookie(cookie.Name) {
+				header.SetCookie(cookie)
+			}
 		}
 		cln.mu.RUnlock()
 	}
@@ -257,10 +254,14 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 	if cln.Header != nil {
 		cln.mu.RLock()
 		for name, value := range cln.Header.All() {
-			header.Set(name, value)
+			if !header.Has(name) {
+				header.Set(name, value)
+			}
 		}
 		for cookie := range cln.Header.Cookies() {
-			header.SetCookie(cookie)
+			if !header.HasCookie(cookie.Name) {
+				header.SetCookie(cookie)
+			}
 		}
 		cln.mu.RUnlock()
 	}
@@ -280,17 +281,25 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 		header.Set("Authorization", "Basic "+specs.BasicAuthHeader(url.Username, url.Password))
 	}
 
-	// If protocol switcher
-	if header.Get("Connection") != "close" &&
-		!(header.Has("Upgrade") && strings.EqualFold(header.Get("Connection"), "Upgrade")) {
+	if hijacker == nil && !header.Has("Connection") {
 		header.Set("Connection", "close")
+	}
+
+	isChunked, err := encoding.IsChunkedEncoding(header)
+	if err != nil {
+		return nil, err
+	}
+
+	conn, err := cln.dial(ctx, &url)
+	if err != nil {
+		return nil, err
 	}
 
 	if cln.WriteTimeout > 0 {
 		conn.SetWriteDeadline(time.Now().Add(cln.WriteTimeout))
 	}
 
-	_, err = writing.WriteRequestHead(conn, method, &url, header)
+	_, err = client.WriteRequestHead(conn, method, &url, header)
 
 	if err = catch.CatchCommonErr(err); err != nil {
 		conn.Close()
@@ -304,7 +313,19 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 	}
 
 	if method.IsPostable() && writer != nil {
-		err = writer.WriteBody(conn)
+		if isChunked {
+			var bodyConverter io.WriteCloser
+			bodyConverter, err = encoding.ReadWriterBuilder{Chunked: true}.NewWriter(conn)
+			if err == nil {
+				err = writer.WriteBody(bodyConverter)
+			}
+			if bodyConverter != nil {
+				bodyConverter.Close()
+			}
+		} else {
+			err = writer.WriteBody(conn)
+		}
+
 		if err != nil {
 			conn.Close()
 			return nil, catch.CatchCommonErr(err)
@@ -350,7 +371,7 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 	}
 
 	if !method.IsReplyable() || !resp.StatusCode().IsReplyable() {
-		if hijacker != nil {
+		if hijacker != nil && header.Get("Connection") != "close" {
 			if cln.ReadTimeout > 0 {
 				conn.SetReadDeadline(time.Time{})
 			}
@@ -362,21 +383,25 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 	} else {
 		extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
 		reader := io.MultiReader(bytes.NewReader(extraBuffered), conn)
-		chainedClosers := []io.Closer{conn}
 
-		switch resp.Header().Get("Transfer-Encoding") {
-		case "chunked":
+		isChunked, err = encoding.IsChunkedEncoding(resp.Header())
+		if err != nil {
+			conn.Close()
+			return nil, err
+		}
+
+		if isChunked {
 			if cln.MaxBodySize > 0 {
 				reader = io.LimitReader(reader, cln.MaxBodySize)
 			}
-			reader = httputil.NewChunkedReader(reader)
-		default:
+		} else {
 			var contentLength int64
 			if cl := resp.Header().Get("Content-Length"); cl != "" {
 				contentLength, err = strconv.ParseInt(cl, 10, 64)
 				if err == nil {
 					if contentLength <= 0 {
 						reader = nil
+						conn.Close()
 					} else if cln.MaxBodySize > 0 && contentLength >= cln.MaxBodySize {
 						return nil, specs.ErrTooLarge
 					}
@@ -395,43 +420,28 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 		}
 
 		if reader != nil {
-			switch resp.Header().Get("Content-Encoding") {
-			case string(specs.GzipContentEncoding):
-				gzreader, err := gzip.NewReader(reader)
-				if err != nil {
-					return nil, &specs.GigletError{
-						Op:  "encoding",
-						Err: err,
-					}
-				}
-				reader = gzreader
-				chainedClosers = append(chainedClosers, gzreader)
+			contentEncoding := resp.Header().Get("Content-Encoding")
+			if !encoding.IsKnownEncoding(contentEncoding) {
+				return nil, specs.ErrUnknownContentEncoding
 			}
 
-			var body io.ReadCloser
-			body = stream.ReadClose(func(p []byte) (int, error) {
-				if err = catch.CatchContextCancel(ctx); err != nil {
-					body.Close()
-					return -1, err
-				}
-				i, err := reader.Read(p)
-				return i, catch.CatchCommonErr(err)
-			}, func() error {
-				for closer := range utils.ReverseIter(chainedClosers) {
-					err = closer.Close()
-				}
-				return err
-			})
+			resp.Reader, err = encoding.ReadWriterBuilder{
+				Chunked:  isChunked,
+				Encoding: contentEncoding,
+			}.NewReader(reader, conn)
 
-			resp.Reader = body
+			if err != nil {
+				conn.Close()
+				return nil, err
+			}
 
 			if err = catch.CatchContextCancel(ctx); err != nil {
-				body.Close()
+				conn.Close()
 				return nil, err
 			}
 		}
 
-		if hijacker != nil {
+		if hijacker != nil && header.Get("Connection") != "close" {
 			if cln.ReadTimeout > 0 {
 				conn.SetReadDeadline(time.Time{})
 			}
@@ -443,7 +453,10 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 	return resp, nil
 }
 
-func (cln *Client) dial(ctx context.Context, address, host string, isTls bool) (net.Conn, error) {
+func (cln *Client) dial(ctx context.Context, url *specs.Url) (net.Conn, error) {
+	isTls := url.Scheme == "https"
+	address := url.Host + ":" + strconv.FormatUint(uint64(url.Port), 10)
+
 	var conn net.Conn
 	var err error
 	if cln.DialContext != nil {
@@ -470,7 +483,7 @@ func (cln *Client) dial(ctx context.Context, address, host string, isTls bool) (
 		var newConn net.Conn
 		if cln.TLSHandshakeContext != nil {
 			newConn, err = catch.CallWithTimeoutContext(ctx, cln.TLSHandshakeTimeout, func(ctx context.Context) (net.Conn, error) {
-				return cln.TLSHandshakeContext(ctx, conn, host)
+				return cln.TLSHandshakeContext(ctx, conn, url.Host)
 			})
 		} else {
 			newConn, err = catch.CallWithTimeoutContext(ctx, cln.TLSHandshakeTimeout, func(ctx context.Context) (net.Conn, error) {
@@ -483,7 +496,7 @@ func (cln *Client) dial(ctx context.Context, address, host string, isTls bool) (
 				}
 
 				if tlsCfg.ServerName == "" {
-					tlsCfg.ServerName = host
+					tlsCfg.ServerName = url.Host
 				}
 
 				tlsConn := tls.Client(conn, tlsCfg)
@@ -495,13 +508,7 @@ func (cln *Client) dial(ctx context.Context, address, host string, isTls bool) (
 
 		if err = catch.CatchCommonErr(err); err != nil {
 			conn.Close()
-			if _, ok := err.(*specs.GigletError); ok {
-				return nil, err
-			}
-			return nil, &specs.GigletError{
-				Op:  "tls",
-				Err: err,
-			}
+			return nil, err
 		}
 		return newConn, nil
 	}

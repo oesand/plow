@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal"
 	"github.com/oesand/giglet/specs"
 	"io"
 	"net"
@@ -11,7 +11,7 @@ import (
 type HijackHandler func(ctx context.Context, conn net.Conn)
 
 type HttpRequest struct {
-	_ utils.NoCopy
+	_ internal.NoCopy
 
 	conn     net.Conn
 	hijacker HijackHandler
@@ -22,7 +22,8 @@ type HttpRequest struct {
 	header                 *specs.Header
 
 	BodyReader       io.Reader
-	SelectedEncoding specs.ContentEncoding
+	Chunked          bool
+	SelectedEncoding string
 }
 
 func (req *HttpRequest) ProtoVersion() (major, minor uint16) {
