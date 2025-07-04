@@ -1,6 +1,11 @@
 package specs
 
 const (
-	UnknownContentEncoding = ""
-	GzipContentEncoding    = "gzip"
+	ContentEncodingUndefined = ""
+	ContentEncodingGzip      = "gzip"
+	ContentEncodingDeflate   = "deflate"
+
+	// TODO : implement encodings
+	ContentEncodingBrotli = "br"
+	ContentEncodingZstd   = "zstd"
 )

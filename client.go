@@ -2,16 +2,19 @@ package giglet
 
 import (
 	"bytes"
+	"compress/flate"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/oesand/giglet/internal"
 	"github.com/oesand/giglet/internal/catch"
 	"github.com/oesand/giglet/internal/client"
-	"github.com/oesand/giglet/internal/encoding"
 	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
 	"io"
 	"net"
+	"net/http/httputil"
 	"strconv"
 	"sync"
 	"time"
@@ -285,12 +288,20 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 		header.Set("Connection", "close")
 	}
 
-	isChunked, err := encoding.IsChunkedEncoding(header)
+	isChunked, err := internal.IsChunkedEncoding(header)
 	if err != nil {
 		return nil, err
 	}
 
-	conn, err := cln.dial(ctx, &url)
+	if !isChunked && writer != nil {
+		contentLength := writer.ContentLength()
+		if contentLength > 0 {
+			header.Set("Content-Length", strconv.FormatInt(contentLength, 10))
+		}
+	}
+
+	isTls := url.Scheme == "https"
+	conn, err := cln.dial(ctx, url.Host, url.Port, isTls)
 	if err != nil {
 		return nil, err
 	}
@@ -314,14 +325,9 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 
 	if method.IsPostable() && writer != nil {
 		if isChunked {
-			var bodyConverter io.WriteCloser
-			bodyConverter, err = encoding.ReadWriterBuilder{Chunked: true}.NewWriter(conn)
-			if err == nil {
-				err = writer.WriteBody(bodyConverter)
-			}
-			if bodyConverter != nil {
-				bodyConverter.Close()
-			}
+			chunkedWriter := httputil.NewChunkedWriter(conn)
+			err = writer.WriteBody(chunkedWriter)
+			chunkedWriter.Close()
 		} else {
 			err = writer.WriteBody(conn)
 		}
@@ -381,10 +387,15 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 			_ = conn.Close()
 		}
 	} else {
+		contentEncoding := resp.Header().Get("Content-Encoding")
+		if !internal.IsKnownContentEncoding(contentEncoding) {
+			return nil, specs.ErrUnknownContentEncoding
+		}
+
 		extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
 		reader := io.MultiReader(bytes.NewReader(extraBuffered), conn)
 
-		isChunked, err = encoding.IsChunkedEncoding(resp.Header())
+		isChunked, err = internal.IsChunkedEncoding(resp.Header())
 		if err != nil {
 			conn.Close()
 			return nil, err
@@ -420,20 +431,31 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 		}
 
 		if reader != nil {
-			contentEncoding := resp.Header().Get("Content-Encoding")
-			if !encoding.IsKnownEncoding(contentEncoding) {
-				return nil, specs.ErrUnknownContentEncoding
+			var readerClosers internal.SeqCloser
+
+			readerClosers.Add(conn)
+
+			if isChunked {
+				reader = httputil.NewChunkedReader(reader)
 			}
 
-			resp.Reader, err = encoding.ReadWriterBuilder{
-				Chunked:  isChunked,
-				Encoding: contentEncoding,
-			}.NewReader(reader, conn)
+			switch contentEncoding {
+			case specs.ContentEncodingGzip:
+				gzr, err := gzip.NewReader(reader)
+				if err != nil {
+					conn.Close()
+					return nil, err
+				}
+				reader = gzr
+				readerClosers.Add(gzr)
 
-			if err != nil {
-				conn.Close()
-				return nil, err
+			case specs.ContentEncodingDeflate:
+				dlr := flate.NewReader(reader)
+				reader = dlr
+				readerClosers.Add(dlr)
 			}
+
+			resp.Reader = internal.ReadCloser(reader, &readerClosers)
 
 			if err = catch.CatchContextCancel(ctx); err != nil {
 				conn.Close()
@@ -453,9 +475,8 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 	return resp, nil
 }
 
-func (cln *Client) dial(ctx context.Context, url *specs.Url) (net.Conn, error) {
-	isTls := url.Scheme == "https"
-	address := url.Host + ":" + strconv.FormatUint(uint64(url.Port), 10)
+func (cln *Client) dial(ctx context.Context, host string, port uint16, isTls bool) (net.Conn, error) {
+	address := host + ":" + strconv.FormatUint(uint64(port), 10)
 
 	var conn net.Conn
 	var err error
@@ -483,7 +504,7 @@ func (cln *Client) dial(ctx context.Context, url *specs.Url) (net.Conn, error) {
 		var newConn net.Conn
 		if cln.TLSHandshakeContext != nil {
 			newConn, err = catch.CallWithTimeoutContext(ctx, cln.TLSHandshakeTimeout, func(ctx context.Context) (net.Conn, error) {
-				return cln.TLSHandshakeContext(ctx, conn, url.Host)
+				return cln.TLSHandshakeContext(ctx, conn, host)
 			})
 		} else {
 			newConn, err = catch.CallWithTimeoutContext(ctx, cln.TLSHandshakeTimeout, func(ctx context.Context) (net.Conn, error) {
@@ -496,7 +517,7 @@ func (cln *Client) dial(ctx context.Context, url *specs.Url) (net.Conn, error) {
 				}
 
 				if tlsCfg.ServerName == "" {
-					tlsCfg.ServerName = url.Host
+					tlsCfg.ServerName = host
 				}
 
 				tlsConn := tls.Client(conn, tlsCfg)

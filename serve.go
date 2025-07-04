@@ -2,11 +2,12 @@ package giglet
 
 import (
 	"bytes"
+	"compress/flate"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"errors"
 	"github.com/oesand/giglet/internal/catch"
-	"github.com/oesand/giglet/internal/encoding"
 	"github.com/oesand/giglet/internal/server"
 	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
@@ -88,10 +89,6 @@ func (server *Server) Serve(listener net.Listener) error {
 	listener.Close()
 
 	return err
-}
-
-func (srv *Server) catchCancelled(ctx context.Context) bool {
-	return ctx.Err() != nil
 }
 
 func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
@@ -235,15 +232,8 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 
 		header.Set("Date", time.Now().Format(specs.TimeFormat))
 
-		if req.SelectedEncoding != specs.UnknownContentEncoding {
+		if req.SelectedEncoding != specs.ContentEncodingUndefined {
 			header.Set("Content-Encoding", req.SelectedEncoding)
-		}
-
-		if req.Chunked {
-			header.Set("Transfer-Encoding", "chunked")
-			if header.Has("Content-Length") {
-				header.Del("Content-Length")
-			}
 		}
 
 		if !code.IsValid() {
@@ -251,6 +241,30 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 				code = specs.StatusCodeNoContent
 			} else {
 				code = specs.StatusCodeOK
+			}
+		}
+
+		var encodedContent []byte
+		shouldResponseBody := req.Method().IsReplyable() && code.IsReplyable() && writable != nil
+		if shouldResponseBody {
+			if req.Chunked {
+				header.Set("Transfer-Encoding", "chunked")
+			} else if req.SelectedEncoding != specs.ContentEncodingUndefined { // add check size
+				var cachedBody bytes.Buffer
+				err = srv.writeBody(writable, &cachedBody, false, req.SelectedEncoding)
+				if err != nil {
+					if srv.Debug {
+						srv.logger().Printf("giglet: fail to cache encoded response '%s': %v", conn.RemoteAddr(), err)
+					}
+				}
+				encodedContent = cachedBody.Bytes()
+				header.Set("Content-Length", strconv.FormatInt(int64(len(encodedContent)), 10))
+			} else {
+				req.SelectedEncoding = specs.ContentEncodingUndefined
+				contentLength := writable.ContentLength()
+				if contentLength > 0 {
+					header.Set("Content-Length", strconv.FormatInt(contentLength, 10))
+				}
 			}
 		}
 
@@ -273,22 +287,19 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 			break
 		}
 
-		if req.Method().IsReplyable() && code.IsReplyable() && writable != nil {
-			writer, err := encoding.ReadWriterBuilder{
-				Encoding: req.SelectedEncoding,
-				Chunked:  req.Chunked,
-			}.NewWriter(conn)
-
-			err = writable.WriteBody(writer)
-
-			writer.Close()
-
-			if err != nil {
-				if srv.Debug {
-					srv.logger().Printf("giglet: error to send body to '%s': %v", conn.RemoteAddr(), err)
-				}
-				break
+		if encodedContent != nil {
+			if len(encodedContent) > 0 {
+				_, err = conn.Write(encodedContent)
 			}
+		} else if shouldResponseBody {
+			err = srv.writeBody(writable, conn, req.Chunked, req.SelectedEncoding)
+		}
+
+		if err != nil {
+			if srv.Debug {
+				srv.logger().Printf("giglet: error to send body to '%s': %v", conn.RemoteAddr(), err)
+			}
+			break
 		}
 
 		if srv.WriteTimeout > 0 {
@@ -304,4 +315,33 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 			break
 		}
 	}
+}
+
+func (srv *Server) catchCancelled(ctx context.Context) bool {
+	return ctx.Err() != nil
+}
+
+func (srv *Server) writeBody(writable BodyWriter, writer io.Writer, chunked bool, encoding string) error {
+	if chunked {
+		chw := httputil.NewChunkedWriter(writer)
+		defer chw.Close()
+		writer = chw
+	}
+
+	switch encoding {
+	case specs.ContentEncodingGzip:
+		gzw := gzip.NewWriter(writer)
+		defer gzw.Close()
+		writer = gzw
+
+	case specs.ContentEncodingDeflate:
+		dfw, err := flate.NewWriter(writer, flate.DefaultCompression)
+		if err != nil {
+			return err
+		}
+		defer dfw.Close()
+		writer = dfw
+	}
+
+	return writable.WriteBody(writer)
 }

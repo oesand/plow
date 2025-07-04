@@ -82,6 +82,13 @@ type Server struct {
 	// By default, request body size is unlimited.
 	MaxBodySize int64
 
+	// MaxBodySize maximum size in bytes
+	// of the response body that will be encoded (based on the "Accept-Encoding" header)
+	// when transfer by size (not chunked "Transfer-Encoding": "chunked")
+	//
+	// if not specified, the encoding will be skipped
+	MaxEncodingSize int64
+
 	nextProtos map[string]NextProtoHandler
 
 	listenerTrack  sync.WaitGroup

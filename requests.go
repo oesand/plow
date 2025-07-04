@@ -12,6 +12,12 @@ func NewRequest(method specs.HttpMethod, url *specs.Url) ClientRequest {
 }
 
 func newRequest(method specs.HttpMethod, url *specs.Url) *clientRequest {
+	if !method.IsValid() {
+		panic("giglet/request: invalid method")
+	}
+	if url == nil {
+		panic("giglet/request: passed nil url")
+	}
 	return &clientRequest{
 		method: method,
 		url:    *url,
@@ -39,25 +45,36 @@ func (req *clientRequest) Header() *specs.Header {
 	return req.header
 }
 
-func NewBufferRequest(method specs.HttpMethod, url *specs.Url, buffer []byte) ClientRequest {
+func NewTextRequest(method specs.HttpMethod, url *specs.Url, text string, contentType specs.ContentType) ClientRequest {
+	if contentType == specs.ContentTypeUndefined {
+		contentType = specs.ContentTypePlain
+	}
+	return NewBufferRequest(method, url, []byte(text), contentType)
+}
+
+func NewBufferRequest(method specs.HttpMethod, url *specs.Url, buffer []byte, contentType specs.ContentType) ClientRequest {
 	if method == "" {
 		method = specs.HttpMethodPost
-	} else if !method.IsValid() {
-		panic("giglet/request: invalid method")
-	}
-	if url == nil {
-		panic("giglet/request: invalid url")
 	}
 
-	return &bufferRequest{
+	req := &bufferRequest{
 		clientRequest: *newRequest(method, url),
 		buffer:        buffer,
+		contentLength: int64(len(buffer)),
 	}
+
+	if contentType == specs.ContentTypeUndefined {
+		contentType = specs.ContentTypeRaw
+	}
+	req.Header().Set("Content-Type", string(contentType))
+
+	return req
 }
 
 type bufferRequest struct {
 	clientRequest
-	buffer []byte
+	buffer        []byte
+	contentLength int64
 }
 
 func (req *bufferRequest) WriteBody(w io.Writer) error {
@@ -65,30 +82,45 @@ func (req *bufferRequest) WriteBody(w io.Writer) error {
 	return err
 }
 
-func NewStreamRequest(method specs.HttpMethod, url *specs.Url, stream io.Reader) ClientRequest {
+func (req *bufferRequest) ContentLength() int64 {
+	return req.contentLength
+}
+
+func NewStreamRequest(method specs.HttpMethod, url *specs.Url, stream io.Reader, contentType specs.ContentType, contentLength int64) ClientRequest {
 	if method == "" {
 		method = specs.HttpMethodPost
-	} else if !method.IsValid() {
-		panic("giglet/request: invalid method")
 	}
-	if url == nil {
-		panic("giglet/request: invalid url")
+	if contentLength < 0 {
+		panic("giglet/request: invalid content length")
 	}
 
-	return &streamRequest{
+	req := &streamRequest{
 		clientRequest: *newRequest(method, url),
 		stream:        stream,
+		contentLength: contentLength,
 	}
+
+	if contentType == specs.ContentTypeUndefined {
+		contentType = specs.ContentTypeRaw
+	}
+	req.Header().Set("Content-Type", string(contentType))
+
+	return req
 }
 
 type streamRequest struct {
 	clientRequest
-	stream io.Reader
+	stream        io.Reader
+	contentLength int64
 }
 
 func (req *streamRequest) WriteBody(w io.Writer) error {
 	_, err := io.Copy(w, req.stream)
 	return err
+}
+
+func (req *streamRequest) ContentLength() int64 {
+	return req.contentLength
 }
 
 func NewHijackRequest(method specs.HttpMethod, url *specs.Url) HijackRequest {

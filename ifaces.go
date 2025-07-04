@@ -45,6 +45,7 @@ type ClientResponse interface {
 
 type BodyWriter interface {
 	WriteBody(io.Writer) error
+	ContentLength() int64
 }
 
 type HijackRequest interface {

@@ -39,7 +39,7 @@ func TestClient_PostRequest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	req := NewBufferRequest(specs.HttpMethodGet, specs.MustParseUrl(server.URL), requestBody)
+	req := NewBufferRequest(specs.HttpMethodGet, specs.MustParseUrl(server.URL), requestBody, specs.ContentTypePlain)
 	resp, err := DefaultClient().Make(req)
 	if err != nil {
 		t.Fatal("req:", err)
@@ -120,7 +120,6 @@ func TestClient_RedirectInvalidLocation(t *testing.T) {
 }
 
 func TestClient_ChunkedTransferEncoding(t *testing.T) {
-	return
 	closeServer := newTestServer(func(ctx context.Context, req Request) Response {
 		return NewTextResponse("Answered chunked", specs.ContentTypePlain)
 	})
@@ -145,6 +144,8 @@ func TestClient_ChunkedTransferEncoding(t *testing.T) {
 
 	data, err := io.ReadAll(body)
 	t.Logf("data: %s \n", data)
+
+	http.Serve()
 
 	// TODO : fix invalid Content-Length with encoding
 

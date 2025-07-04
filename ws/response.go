@@ -59,7 +59,7 @@ func UpgradeResponse(req giglet.Request, handler Handler) giglet.Response {
 		wsConn.dead = true
 	})
 
-	return giglet.NewEmptyResponse(specs.ContentTypeUndefined, func(resp giglet.Response) {
+	return giglet.NewEmptyResponse(func(resp giglet.Response) {
 		resp.SetStatusCode(specs.StatusCodeSwitchingProtocols)
 		resp.Header().Set("Upgrade", "websocket")
 		resp.Header().Set("Connection", "Upgrade")
