@@ -1,45 +1,45 @@
 package specs
 
-type ContentType string
+import "strings"
 
 const (
-	ContentTypeUndefined ContentType = ""
-	ContentTypeRaw       ContentType = "application/octet-stream"
-	ContentTypePlain     ContentType = "text/plain"
-	ContentTypeRichText  ContentType = "application/rtf"
-	ContentTypeMarkdown  ContentType = "text/markdown"
+	ContentTypeUndefined = ""
+	ContentTypeRaw       = "application/octet-stream"
+	ContentTypePlain     = "text/plain"
+	ContentTypeRichText  = "application/rtf"
+	ContentTypeMarkdown  = "text/markdown"
 
-	ContentTypeHTML       ContentType = "text/html"
-	ContentTypeCSV        ContentType = "text/csv"
-	ContentTypeCSS        ContentType = "text/css"
-	ContentTypePDF        ContentType = "application/pdf"
-	ContentTypeJavaScript ContentType = "text/javascript"
-	ContentTypeFontTTF    ContentType = "font/ttf"
+	ContentTypeHTML       = "text/html"
+	ContentTypeCSV        = "text/csv"
+	ContentTypeCSS        = "text/css"
+	ContentTypePDF        = "application/pdf"
+	ContentTypeJavaScript = "text/javascript"
+	ContentTypeFontTTF    = "font/ttf"
 
-	ContentTypeAVI  ContentType = "video/x-msvideo"
-	ContentTypeWAV  ContentType = "audio/wav"
-	ContentTypeMP3  ContentType = "audio/mpeg"
-	ContentTypeMP4  ContentType = "video/mp4"
-	ContentTypeMPEG ContentType = "video/mpeg"
-	ContentTypeMPV  ContentType = "video/MPV"
-	ContentTypeMKV  ContentType = "application/x-matroska"
+	ContentTypeAVI  = "video/x-msvideo"
+	ContentTypeWAV  = "audio/wav"
+	ContentTypeMP3  = "audio/mpeg"
+	ContentTypeMP4  = "video/mp4"
+	ContentTypeMPEG = "video/mpeg"
+	ContentTypeMPV  = "video/MPV"
+	ContentTypeMKV  = "application/x-matroska"
 
-	ContentTypeAVIF ContentType = "image/avif"
-	ContentTypeBMP  ContentType = "image/bmp"
-	ContentTypeGIF  ContentType = "image/gif"
-	ContentTypeJPEG ContentType = "image/jpeg"
-	ContentTypePNG  ContentType = "image/png"
-	ContentTypeWEBP ContentType = "image/webp"
-	ContentTypeSVG  ContentType = "image/svg+xml"
+	ContentTypeAVIF = "image/avif"
+	ContentTypeBMP  = "image/bmp"
+	ContentTypeGIF  = "image/gif"
+	ContentTypeJPEG = "image/jpeg"
+	ContentTypePNG  = "image/png"
+	ContentTypeWEBP = "image/webp"
+	ContentTypeSVG  = "image/svg+xml"
 
-	ContentTypeJson      ContentType = "application/json"
-	ContentTypeXml       ContentType = "application/xml"
-	ContentTypeMsgpack   ContentType = "application/msgpack"
-	ContentTypeProtobuf  ContentType = "application/x-protobuf"
-	ContentTypeForm      ContentType = "application/x-www-form-urlencoded"
-	ContentTypeMultipart ContentType = "multipart/form-data"
+	ContentTypeJson      = "application/json"
+	ContentTypeXml       = "application/xml"
+	ContentTypeMsgpack   = "application/msgpack"
+	ContentTypeProtobuf  = "application/x-protobuf"
+	ContentTypeForm      = "application/x-www-form-urlencoded"
+	ContentTypeMultipart = "multipart/form-data"
 )
 
-func (contentType ContentType) IsForm() bool {
-	return contentType == ContentTypeForm || contentType == ContentTypeMultipart
+func IsContentType(header *Header, contentType string) bool {
+	return strings.HasPrefix(header.Get("Content-Type"), contentType)
 }

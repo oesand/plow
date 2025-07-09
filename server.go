@@ -19,10 +19,11 @@ func DefaultServer(handler Handler) *Server {
 		Handler:             handler,
 		ReadLineMaxLength:   1024,
 		HeadMaxLength:       8 * 1024,
-		MaxBodySize:         20 << 20, // 20 mb
+		MaxBodySize:         10 << 20, // 10 mb
 		ReadTimeout:         10 * time.Second,
 		WriteTimeout:        10 * time.Second,
 		TLSHandshakeTimeout: 5 * time.Second,
+		MaxEncodingSize:     DefaultMaxEncodingSize,
 	}
 }
 
@@ -39,7 +40,7 @@ type Server struct {
 	// Debug flag to allow show system messages
 	Debug bool
 
-	// Server name for sending in response headers.
+	// ServerName for sending in response headers.
 	ServerName string
 
 	// ReadTimeout is the maximum duration for server the entire
@@ -82,9 +83,9 @@ type Server struct {
 	// By default, request body size is unlimited.
 	MaxBodySize int64
 
-	// MaxBodySize maximum size in bytes
+	// MaxEncodingSize maximum size in bytes
 	// of the response body that will be encoded (based on the "Accept-Encoding" header)
-	// when transfer by size (not chunked "Transfer-Encoding": "chunked")
+	// when transfer by size - "Content-Length", except { "Transfer-Encoding": "chunked" }
 	//
 	// if not specified, the encoding will be skipped
 	MaxEncodingSize int64
@@ -164,7 +165,7 @@ func (server *Server) ListenAndServeTLSRaw(addr string, cert tls.Certificate) er
 	if err != nil {
 		return err
 	}
-	return server.ServeTLSRaw(lst, cert)
+	return server.serveTLSRaw(lst, &cert)
 }
 
 func (srv *Server) ServeTLS(lst net.Listener, certFile, keyFile string) error {
@@ -177,10 +178,14 @@ func (srv *Server) ServeTLS(lst net.Listener, certFile, keyFile string) error {
 	if err != nil {
 		return err
 	}
-	return srv.ServeTLSRaw(lst, cert)
+	return srv.serveTLSRaw(lst, &cert)
 }
 
 func (server *Server) ServeTLSRaw(lst net.Listener, cert tls.Certificate) error {
+	return server.serveTLSRaw(lst, &cert)
+}
+
+func (server *Server) serveTLSRaw(lst net.Listener, cert *tls.Certificate) error {
 	if server.isShuttingdown.Load() {
 		return specs.ErrClosed
 	}
@@ -199,7 +204,7 @@ func (server *Server) ServeTLSRaw(lst net.Listener, cert tls.Certificate) error 
 	configHasCert := len(config.Certificates) > 0 || config.GetCertificate != nil
 	if !configHasCert {
 		config.Certificates = make([]tls.Certificate, 1)
-		config.Certificates[0] = cert
+		config.Certificates[0] = *cert
 	}
 
 	listener := tls.NewListener(lst, config)

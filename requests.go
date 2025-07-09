@@ -45,14 +45,14 @@ func (req *clientRequest) Header() *specs.Header {
 	return req.header
 }
 
-func NewTextRequest(method specs.HttpMethod, url *specs.Url, text string, contentType specs.ContentType) ClientRequest {
+func NewTextRequest(method specs.HttpMethod, url *specs.Url, text string, contentType string) ClientRequest {
 	if contentType == specs.ContentTypeUndefined {
 		contentType = specs.ContentTypePlain
 	}
 	return NewBufferRequest(method, url, []byte(text), contentType)
 }
 
-func NewBufferRequest(method specs.HttpMethod, url *specs.Url, buffer []byte, contentType specs.ContentType) ClientRequest {
+func NewBufferRequest(method specs.HttpMethod, url *specs.Url, buffer []byte, contentType string) ClientRequest {
 	if method == "" {
 		method = specs.HttpMethodPost
 	}
@@ -66,7 +66,7 @@ func NewBufferRequest(method specs.HttpMethod, url *specs.Url, buffer []byte, co
 	if contentType == specs.ContentTypeUndefined {
 		contentType = specs.ContentTypeRaw
 	}
-	req.Header().Set("Content-Type", string(contentType))
+	req.Header().Set("Content-Type", contentType)
 
 	return req
 }
@@ -86,7 +86,7 @@ func (req *bufferRequest) ContentLength() int64 {
 	return req.contentLength
 }
 
-func NewStreamRequest(method specs.HttpMethod, url *specs.Url, stream io.Reader, contentType specs.ContentType, contentLength int64) ClientRequest {
+func NewStreamRequest(method specs.HttpMethod, url *specs.Url, stream io.Reader, contentType string, contentLength int64) ClientRequest {
 	if method == "" {
 		method = specs.HttpMethodPost
 	}
@@ -103,7 +103,7 @@ func NewStreamRequest(method specs.HttpMethod, url *specs.Url, stream io.Reader,
 	if contentType == specs.ContentTypeUndefined {
 		contentType = specs.ContentTypeRaw
 	}
-	req.Header().Set("Content-Type", string(contentType))
+	req.Header().Set("Content-Type", contentType)
 
 	return req
 }

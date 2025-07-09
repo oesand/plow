@@ -2,14 +2,13 @@ package giglet
 
 import (
 	"bytes"
-	"compress/flate"
-	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"fmt"
 	"github.com/oesand/giglet/internal"
 	"github.com/oesand/giglet/internal/catch"
 	"github.com/oesand/giglet/internal/client"
+	"github.com/oesand/giglet/internal/encoding"
 	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
 	"io"
@@ -28,7 +27,7 @@ func DefaultClient() *Client {
 	return &Client{
 		ReadLineMaxLength:   1024,
 		HeadMaxLength:       8 * 1024,
-		MaxBodySize:         20 << 20, // 20 mb
+		MaxBodySize:         10 << 20, // 10 mb
 		ReadTimeout:         10 * time.Second,
 		WriteTimeout:        10 * time.Second,
 		TLSHandshakeTimeout: 5 * time.Second,
@@ -275,7 +274,7 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 	if !header.Has("Accept-Encoding") &&
 		!header.Has("Range") &&
 		method != specs.HttpMethodHead {
-		header.Set("Accept-Encoding", "gzip")
+		header.Set("Accept-Encoding", encoding.DefaultAcceptEncoding)
 	}
 	if !header.Has("Host") {
 		header.Set("Host", url.Host)
@@ -288,7 +287,7 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 		header.Set("Connection", "close")
 	}
 
-	isChunked, err := internal.IsChunkedEncoding(header)
+	isChunked, err := encoding.IsChunkedTransfer(header)
 	if err != nil {
 		return nil, err
 	}
@@ -303,7 +302,13 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 	isTls := url.Scheme == "https"
 	conn, err := cln.dial(ctx, url.Host, url.Port, isTls)
 	if err != nil {
-		return nil, err
+		if _, ok := err.(*specs.GigletError); ok {
+			return nil, err
+		}
+		return nil, &specs.GigletError{
+			Op:  "dial",
+			Err: err,
+		}
 	}
 
 	if cln.WriteTimeout > 0 {
@@ -356,16 +361,11 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 
 	resp, err := client.ReadResponse(ctx, headerReader, cln.ReadLineMaxLength, cln.HeadMaxLength)
 
-	if err = catch.CatchCommonErr(err); err != nil {
-		conn.Close()
-		if _, ok := err.(*specs.GigletError); ok {
-			return nil, err
-		}
-		return nil, &specs.GigletError{
-			Op:  "read",
-			Err: err,
-		}
-	} else if err = catch.CatchContextCancel(ctx); err != nil {
+	err = catch.CatchCommonErr(err)
+	if err == nil {
+		err = catch.CatchContextCancel(ctx)
+	}
+	if err != nil {
 		conn.Close()
 		return nil, err
 	}
@@ -384,18 +384,18 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 			resp.Hijacked = true
 			hijacker.Hijack(conn)
 		} else {
-			_ = conn.Close()
+			conn.Close()
 		}
 	} else {
 		contentEncoding := resp.Header().Get("Content-Encoding")
-		if !internal.IsKnownContentEncoding(contentEncoding) {
+		if contentEncoding != "" && !encoding.IsKnownEncoding(contentEncoding) {
 			return nil, specs.ErrUnknownContentEncoding
 		}
 
 		extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
 		reader := io.MultiReader(bytes.NewReader(extraBuffered), conn)
 
-		isChunked, err = internal.IsChunkedEncoding(resp.Header())
+		isChunked, err = encoding.IsChunkedTransfer(resp.Header())
 		if err != nil {
 			conn.Close()
 			return nil, err
@@ -407,8 +407,8 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 			}
 		} else {
 			var contentLength int64
-			if cl := resp.Header().Get("Content-Length"); cl != "" {
-				contentLength, err = strconv.ParseInt(cl, 10, 64)
+			if contentLengthString := resp.Header().Get("Content-Length"); contentLengthString != "" {
+				contentLength, err = strconv.ParseInt(contentLengthString, 10, 64)
 				if err == nil {
 					if contentLength <= 0 {
 						reader = nil
@@ -439,20 +439,15 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 				reader = httputil.NewChunkedReader(reader)
 			}
 
-			switch contentEncoding {
-			case specs.ContentEncodingGzip:
-				gzr, err := gzip.NewReader(reader)
+			if contentEncoding != "" {
+				var encodingReader io.ReadCloser
+				encodingReader, err = encoding.NewReader(contentEncoding, reader)
 				if err != nil {
 					conn.Close()
 					return nil, err
 				}
-				reader = gzr
-				readerClosers.Add(gzr)
-
-			case specs.ContentEncodingDeflate:
-				dlr := flate.NewReader(reader)
-				reader = dlr
-				readerClosers.Add(dlr)
+				readerClosers.Add(encodingReader)
+				reader = encodingReader
 			}
 
 			resp.Reader = internal.ReadCloser(reader, &readerClosers)
@@ -487,16 +482,11 @@ func (cln *Client) dial(ctx context.Context, host string, port uint16, isTls boo
 	}
 
 	if err = catch.CatchCommonErr(err); err != nil {
-		if _, ok := err.(*specs.GigletError); ok {
-			return nil, err
-		}
-		return nil, &specs.GigletError{
-			Op:  "dial",
-			Err: err,
-		}
+		return nil, err
 	}
 
 	if err = catch.CatchContextCancel(ctx); err != nil {
+		conn.Close()
 		return nil, err
 	}
 
@@ -521,9 +511,11 @@ func (cln *Client) dial(ctx context.Context, host string, port uint16, isTls boo
 				}
 
 				tlsConn := tls.Client(conn, tlsCfg)
-
 				err = tlsConn.HandshakeContext(ctx)
-				return tlsConn, err
+				if err != nil {
+					return nil, err
+				}
+				return tlsConn, nil
 			})
 		}
 

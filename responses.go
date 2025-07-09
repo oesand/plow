@@ -55,14 +55,14 @@ func (resp *HeaderResponse) Header() *specs.Header {
 	return resp.header
 }
 
-func NewTextResponse(text string, contentType specs.ContentType, configure ...func(response Response)) Response {
+func NewTextResponse(text string, contentType string, configure ...func(response Response)) Response {
 	if contentType == specs.ContentTypeUndefined {
 		contentType = specs.ContentTypePlain
 	}
 	return NewBufferResponse([]byte(text), contentType, configure...)
 }
 
-func NewBufferResponse(buffer []byte, contentType specs.ContentType, configure ...func(response Response)) Response {
+func NewBufferResponse(buffer []byte, contentType string, configure ...func(response Response)) Response {
 	resp := &bufferResponse{
 		buffer:        buffer,
 		contentLength: int64(len(buffer)),
@@ -71,7 +71,7 @@ func NewBufferResponse(buffer []byte, contentType specs.ContentType, configure .
 	if contentType == specs.ContentTypeUndefined {
 		contentType = specs.ContentTypeRaw
 	}
-	resp.Header().Set("Content-Type", string(contentType))
+	resp.Header().Set("Content-Type", contentType)
 
 	for _, conf := range configure {
 		conf(&resp.HeaderResponse)
@@ -95,7 +95,7 @@ func (resp *bufferResponse) ContentLength() int64 {
 	return resp.contentLength
 }
 
-func NewStreamResponse(stream io.Reader, contentType specs.ContentType, contentLength int64, configure ...func(response Response)) Response {
+func NewStreamResponse(stream io.Reader, contentType string, contentLength int64, configure ...func(response Response)) Response {
 	if stream == nil {
 		panic("giglet/response: passed nil stream")
 	}
@@ -111,7 +111,7 @@ func NewStreamResponse(stream io.Reader, contentType specs.ContentType, contentL
 	if contentType == specs.ContentTypeUndefined {
 		contentType = specs.ContentTypeRaw
 	}
-	resp.Header().Set("Content-Type", string(contentType))
+	resp.Header().Set("Content-Type", contentType)
 
 	for _, conf := range configure {
 		conf(&resp.HeaderResponse)

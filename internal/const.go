@@ -18,3 +18,13 @@ type readCloser struct {
 	io.Reader
 	io.Closer
 }
+
+func NopWCloser(w io.Writer) io.WriteCloser {
+	return nopWCloser{w}
+}
+
+type nopWCloser struct {
+	io.Writer
+}
+
+func (nopWCloser) Close() error { return nil }

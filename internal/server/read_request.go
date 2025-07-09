@@ -5,8 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/oesand/giglet/internal"
 	"github.com/oesand/giglet/internal/catch"
+	"github.com/oesand/giglet/internal/encoding"
 	"github.com/oesand/giglet/internal/parsing"
 	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
@@ -81,7 +81,7 @@ func ReadRequest(
 
 	var chunkedEncoding bool
 	if protoMajor > 1 || (protoMajor == 1 && protoMinor >= 0) {
-		chunkedEncoding, err = internal.IsChunkedEncoding(header)
+		chunkedEncoding, err = encoding.IsChunkedTransfer(header)
 		if err != nil {
 			return nil, &ErrorResponse{
 				Code: specs.StatusCodeNotImplemented,
@@ -110,7 +110,7 @@ func ReadRequest(
 	if acceptEncoding, has := header.TryGet("Accept-Encoding"); has {
 		variants := strings.Split(acceptEncoding, ", ")
 		for _, variant := range variants {
-			if internal.IsKnownContentEncoding(variant) {
+			if encoding.IsKnownEncoding(variant) {
 				selectedEncoding = variant
 				break
 			}

@@ -7,8 +7,14 @@ import (
 )
 
 const (
-	DefaultServerName           = "giglet"
+	// DefaultServerName default value for Server.ServerName parameter
+	DefaultServerName = "giglet"
+
+	// DefaultMaxRedirectCount default value for Client.MaxRedirectCount parameter
 	DefaultMaxRedirectCount int = 10
+
+	// DefaultMaxEncodingSize default value for Server.MaxEncodingSize parameter
+	DefaultMaxEncodingSize int64 = 5 << 20 // 5 mb
 )
 
 var (
