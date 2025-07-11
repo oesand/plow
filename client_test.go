@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"crypto/tls"
 	"fmt"
 	"github.com/andybalholm/brotli"
 	"github.com/oesand/giglet/specs"
@@ -15,10 +16,6 @@ import (
 	"strings"
 	"testing"
 )
-
-// TODO : Cover Client.Jar and Client.Header
-// TODO : Cover all requests NewRequest, NewTextRequest, NewBufferRequest, NewStreamRequest
-// TODO : Cover TLS conn
 
 func TestClient_GetRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -144,28 +141,7 @@ func TestClient_RedirectInvalidLocation(t *testing.T) {
 	}
 }
 
-//func TestClient_GetRequest(t *testing.T) {
-//	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-//		w.Header().Set("Content-Type", "application/json")
-//		w.Header().Set("x-hello-world", "xyz-123")
-//		w.WriteHeader(http.StatusOK)
-//		w.Write([]byte("OK"))
-//	}))
-//	defer server.Close()
-//
-//	resp, err := DefaultClient().Make(NewRequest(specs.HttpMethodGet, specs.MustParseUrl(server.URL)))
-//	if err != nil {
-//		t.Fatal("req:", err)
-//	}
-//
-//	if resp.Header().Get("X-Hello-World") != "xyz-123" ||
-//		resp.Header().Get("Content-Encoding") != "" ||
-//		resp.Header().Get("Content-Type") != "application/json" {
-//		t.Errorf("not found expected headers, %+v", resp.Header())
-//	}
-//
-//	checkResponseBody(t, resp, []byte("OK"))
-//}
+// Test encoding
 
 func TestClient_GzipEncoding(t *testing.T) {
 	testContent := []byte("Content\nEncoding 1234567890")
@@ -388,4 +364,369 @@ func TestClient_ChunkedAndBrotliEncoding(t *testing.T) {
 	}
 
 	checkResponseBody(t, resp, testContent)
+}
+
+// Test Client.Jar
+
+func TestClient_ClientWithJar(t *testing.T) {
+	cookieName, cookieValue := "X-Cookie-Name", "xyz-123"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, _ := r.Cookie(cookieName)
+		if cookie.Name != cookieName || cookie.Value != cookieValue {
+			t.Errorf("not found expected cookies, %+v", r.Cookies())
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := DefaultClient()
+	client.Jar = specs.NewCookieJar()
+	client.Jar.SetCookie("127.0.0.1", specs.Cookie{
+		Name:  cookieName,
+		Value: cookieValue,
+	})
+
+	resp, err := client.Make(NewRequest(specs.HttpMethodGet, specs.MustParseUrl(server.URL)))
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	if resp.StatusCode() != specs.StatusCodeOK {
+		t.Fatal("invalid status code:", resp.StatusCode())
+	}
+}
+
+func TestClient_ClientWithJarAndAlreadyHasCookie(t *testing.T) {
+	cookieName, cookieValue := "X-Cookie-Name", "xyz-123"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, _ := r.Cookie(cookieName)
+		if cookie.Name != cookieName || cookie.Value != cookieValue {
+			t.Errorf("not found expected cookies, %+v", r.Header)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := DefaultClient()
+	client.Jar = specs.NewCookieJar()
+	client.Jar.SetCookie("127.0.0.1", specs.Cookie{
+		Name:  cookieName,
+		Value: "not-valid-value",
+	})
+
+	req := NewRequest(specs.HttpMethodGet, specs.MustParseUrl(server.URL))
+	req.Header().SetCookieValue(cookieName, cookieValue)
+
+	resp, err := client.Make(req)
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	if resp.StatusCode() != specs.StatusCodeOK {
+		t.Fatal("invalid status code:", resp.StatusCode())
+	}
+}
+
+// Test Client.Header headers
+
+func TestClient_ClientWithHeader(t *testing.T) {
+	headerName, headerValue := "X-Header-Name", "xyz-123"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(headerName) != headerValue {
+			t.Errorf("not found expected headers, %+v", r.Header)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := DefaultClient()
+	client.Header = specs.NewHeader()
+	client.Header.Set(headerName, headerValue)
+
+	resp, err := client.Make(NewRequest(specs.HttpMethodGet, specs.MustParseUrl(server.URL)))
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	if resp.StatusCode() != specs.StatusCodeOK {
+		t.Fatal("invalid status code:", resp.StatusCode())
+	}
+}
+
+func TestClient_ClientWithHeaderAndAlreadyHasHeader(t *testing.T) {
+	headerName, headerValue := "X-Header-Name", "xyz-123"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(headerName) != headerValue {
+			t.Errorf("not found expected headers, %+v", r.Header)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := DefaultClient()
+	client.Header = specs.NewHeader()
+	client.Header.Set(headerName, "not-valid-value")
+
+	req := NewRequest(specs.HttpMethodGet, specs.MustParseUrl(server.URL))
+	req.Header().Set(headerName, headerValue)
+
+	resp, err := client.Make(req)
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	if resp.StatusCode() != specs.StatusCodeOK {
+		t.Fatal("invalid status code:", resp.StatusCode())
+	}
+}
+
+// Test Client.Header cookies
+
+func TestClient_ClientWithHeaderCookies(t *testing.T) {
+	cookieName, cookieValue := "X-Cookie-Name", "xyz-123"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, _ := r.Cookie(cookieName)
+		if cookie.Name != cookieName || cookie.Value != cookieValue {
+			t.Errorf("not found expected cookies, %+v", r.Cookies())
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := DefaultClient()
+	client.Header = specs.NewHeader()
+	client.Header.SetCookieValue(cookieName, cookieValue)
+
+	resp, err := client.Make(NewRequest(specs.HttpMethodGet, specs.MustParseUrl(server.URL)))
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	if resp.StatusCode() != specs.StatusCodeOK {
+		t.Fatal("invalid status code:", resp.StatusCode())
+	}
+}
+
+func TestClient_ClientWithHeaderCookiesAndAlreadyHasCookie(t *testing.T) {
+	cookieName, cookieValue := "X-Cookie-Name", "xyz-123"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, _ := r.Cookie(cookieName)
+		if cookie.Name != cookieName || cookie.Value != cookieValue {
+			t.Errorf("not found expected cookies, %+v", r.Header)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := DefaultClient()
+	client.Header = specs.NewHeader()
+	client.Header.SetCookieValue(cookieName, "not-valid-value")
+
+	req := NewRequest(specs.HttpMethodGet, specs.MustParseUrl(server.URL))
+	req.Header().SetCookieValue(cookieName, cookieValue)
+
+	resp, err := client.Make(req)
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	if resp.StatusCode() != specs.StatusCodeOK {
+		t.Fatal("invalid status code:", resp.StatusCode())
+	}
+}
+
+// Test combined Client.Jar Client.Header.Cookies
+
+func TestClient_ClientWithHeaderCookiesAndJar(t *testing.T) {
+	cookieName, cookieValue := "X-Cookie-Name", "xyz-123"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, _ := r.Cookie(cookieName)
+		if cookie.Name != cookieName || cookie.Value != cookieValue {
+			t.Errorf("not found expected cookies, %+v", r.Header)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := DefaultClient()
+
+	client.Jar = specs.NewCookieJar()
+	client.Jar.SetCookie("127.0.0.1", specs.Cookie{
+		Name:  cookieName,
+		Value: cookieValue,
+	})
+
+	client.Header = specs.NewHeader()
+	client.Header.SetCookieValue(cookieName, "not-valid-value")
+
+	resp, err := client.Make(NewRequest(specs.HttpMethodGet, specs.MustParseUrl(server.URL)))
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	if resp.StatusCode() != specs.StatusCodeOK {
+		t.Fatal("invalid status code:", resp.StatusCode())
+	}
+}
+
+func TestClient_ClientWithHeaderCookiesAndJarAndAlreadyHasCookie(t *testing.T) {
+	cookieName, cookieValue := "X-Cookie-Name", "xyz-123"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, _ := r.Cookie(cookieName)
+		if cookie.Name != cookieName || cookie.Value != cookieValue {
+			t.Errorf("not found expected cookies, %+v", r.Header)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := DefaultClient()
+
+	client.Jar = specs.NewCookieJar()
+	client.Jar.SetCookie("127.0.0.1", specs.Cookie{
+		Name:  cookieName,
+		Value: "not-valid-value",
+	})
+
+	client.Header = specs.NewHeader()
+	client.Header.SetCookieValue(cookieName, "not-valid-value")
+
+	req := NewRequest(specs.HttpMethodGet, specs.MustParseUrl(server.URL))
+	req.Header().SetCookieValue(cookieName, cookieValue)
+
+	resp, err := client.Make(req)
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	if resp.StatusCode() != specs.StatusCodeOK {
+		t.Fatal("invalid status code:", resp.StatusCode())
+	}
+}
+
+// Test all Requests
+
+func TestClient_PostAnyRequest(t *testing.T) {
+	tests := []struct {
+		name     string
+		request  func(url *specs.Url) ClientRequest
+		wantBody []byte
+	}{
+		{
+			name: "TextRequest",
+			request: func(url *specs.Url) ClientRequest {
+				return NewTextRequest(specs.HttpMethodPost, url, "text-request-body", specs.ContentTypePlain)
+			},
+			wantBody: []byte("text-request-body"),
+		},
+		{
+			name: "BufferRequest",
+			request: func(url *specs.Url) ClientRequest {
+				return NewBufferRequest(specs.HttpMethodPost, url, []byte("buffer-request-body"), specs.ContentTypeRaw)
+			},
+			wantBody: []byte("buffer-request-body"),
+		},
+		{
+			name: "StreamRequest",
+			request: func(url *specs.Url) ClientRequest {
+				var buf bytes.Buffer
+				buf.WriteString("stream-request-body")
+				return NewStreamRequest(specs.HttpMethodPost, url, &buf, specs.ContentTypeRaw, int64(buf.Len()))
+			},
+			wantBody: []byte("stream-request-body"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				b, _ := io.ReadAll(r.Body)
+				if !bytes.Equal(b, tt.wantBody) {
+					t.Errorf("expected %s, got %s", string(tt.wantBody), string(b))
+				}
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+
+			req := tt.request(specs.MustParseUrl(server.URL))
+			resp, err := DefaultClient().Make(req)
+			if err != nil {
+				t.Fatal("req:", err)
+			}
+
+			if resp.StatusCode() != specs.StatusCodeOK {
+				t.Fatal("invalid status code:", resp.StatusCode())
+			}
+		})
+	}
+}
+
+// Test TLS
+
+func TestClient_GetRequestTLS(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-hello-world", "xyz-123")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	defer server.Close()
+
+	url := "https://" + server.Listener.Addr().String()
+	client := DefaultClient()
+	client.TLSConfig = &tls.Config{
+		InsecureSkipVerify: true,
+	}
+
+	resp, err := client.Make(NewRequest(specs.HttpMethodGet, specs.MustParseUrl(url)))
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	if resp.Header().Get("X-Hello-World") != "xyz-123" ||
+		resp.Header().Get("Content-Encoding") != "" {
+		t.Errorf("not found expected headers, %+v", resp.Header())
+	}
+
+	checkResponseBody(t, resp, []byte("OK"))
+}
+
+func TestClient_PostRequestTLS(t *testing.T) {
+	requestBody := []byte(`{"key": "value"}`)
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Hello-World") != "xyz-123" ||
+			r.Header.Get("Content-Length") != strconv.Itoa(len(requestBody)) {
+			t.Error("not found expected headers")
+		}
+
+		b, _ := io.ReadAll(r.Body)
+		if !bytes.Equal(b, requestBody) {
+			t.Errorf("expected %s, got %s", string(requestBody), string(b))
+		}
+		w.Write([]byte("received"))
+	}))
+	defer server.Close()
+
+	url := "https://" + server.Listener.Addr().String()
+	client := DefaultClient()
+	client.TLSConfig = &tls.Config{
+		InsecureSkipVerify: true,
+	}
+
+	req := NewBufferRequest(specs.HttpMethodPost, specs.MustParseUrl(url), requestBody, specs.ContentTypePlain)
+	req.Header().Set("x-hello-world", "xyz-123")
+
+	resp, err := client.Make(req)
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	checkResponseBody(t, resp, []byte("received"))
 }

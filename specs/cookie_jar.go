@@ -2,11 +2,18 @@ package specs
 
 import (
 	"github.com/oesand/giglet/internal"
+	"github.com/oesand/giglet/internal/plain"
 	"golang.org/x/net/publicsuffix"
 	"iter"
 	"sync"
 	"time"
 )
+
+func NewCookieJar() *CookieJar {
+	return &CookieJar{
+		cookies: make(map[string]map[string]*Cookie),
+	}
+}
 
 type CookieJar struct {
 	mutex sync.RWMutex
@@ -122,6 +129,6 @@ func (jar *CookieJar) SetCookiesIter(host string, cookies iter.Seq[Cookie]) {
 			continue
 		}
 
-		sub[cookie.Name] = &cookie
+		sub[plain.TitleCase(cookie.Name)] = &cookie
 	}
 }
