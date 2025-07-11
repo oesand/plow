@@ -38,6 +38,7 @@ func (jar *CookieJar) GetCookie(host string, name string) *Cookie {
 		return nil
 	}
 
+	name = plain.TitleCase(name)
 	value, has := sub[name]
 	if has {
 		if value.IsExpired(time.Now()) {
