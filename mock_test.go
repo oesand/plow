@@ -33,8 +33,8 @@ func checkResponseBody(t *testing.T, resp ClientResponse, expected []byte) {
 	}
 }
 
-func newTestServer(handler func(header *specs.Header) (specs.StatusCode, []byte)) func() {
-	listener, err := net.Listen("tcp4", ":http")
+func newTestServer(handler func(header *specs.Header) (specs.StatusCode, []byte)) (func(), *specs.Url) {
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		panic(err)
 	}
@@ -77,5 +77,7 @@ func newTestServer(handler func(header *specs.Header) (specs.StatusCode, []byte)
 		cancel()
 	}
 
-	return closeFunc
+	url := specs.MustParseUrl("http://" + listener.Addr().String())
+
+	return closeFunc, url
 }

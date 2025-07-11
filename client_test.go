@@ -145,7 +145,7 @@ func TestClient_RedirectInvalidLocation(t *testing.T) {
 
 func TestClient_GzipEncoding(t *testing.T) {
 	testContent := []byte("Content\nEncoding 1234567890")
-	closeServer := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
+	closeServer, url := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
 		var cacheBuf bytes.Buffer
 		cw := gzip.NewWriter(&cacheBuf)
 		cw.Write(testContent)
@@ -158,7 +158,7 @@ func TestClient_GzipEncoding(t *testing.T) {
 	})
 	defer closeServer()
 
-	req := NewRequest(specs.HttpMethodGet, specs.MustParseUrl("http://127.0.0.1:80"))
+	req := NewRequest(specs.HttpMethodGet, url)
 
 	resp, err := DefaultClient().Make(req)
 
@@ -175,7 +175,7 @@ func TestClient_GzipEncoding(t *testing.T) {
 
 func TestClient_DeflateEncoding(t *testing.T) {
 	testContent := []byte("Content\nEncoding 1234567890")
-	closeServer := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
+	closeServer, url := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
 		var cacheBuf bytes.Buffer
 		cw, err := flate.NewWriter(&cacheBuf, flate.DefaultCompression)
 		if err != nil {
@@ -191,7 +191,7 @@ func TestClient_DeflateEncoding(t *testing.T) {
 	})
 	defer closeServer()
 
-	req := NewRequest(specs.HttpMethodGet, specs.MustParseUrl("http://127.0.0.1:80"))
+	req := NewRequest(specs.HttpMethodGet, url)
 
 	resp, err := DefaultClient().Make(req)
 
@@ -208,7 +208,7 @@ func TestClient_DeflateEncoding(t *testing.T) {
 
 func TestClient_BrotliEncoding(t *testing.T) {
 	testContent := []byte("Content\nEncoding 1234567890")
-	closeServer := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
+	closeServer, url := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
 		var cacheBuf bytes.Buffer
 		cw := brotli.NewWriter(&cacheBuf)
 		cw.Write(testContent)
@@ -221,7 +221,7 @@ func TestClient_BrotliEncoding(t *testing.T) {
 	})
 	defer closeServer()
 
-	req := NewRequest(specs.HttpMethodGet, specs.MustParseUrl("http://127.0.0.1:80"))
+	req := NewRequest(specs.HttpMethodGet, url)
 
 	resp, err := DefaultClient().Make(req)
 
@@ -238,7 +238,7 @@ func TestClient_BrotliEncoding(t *testing.T) {
 
 func TestClient_ChunkedTransferEncoding(t *testing.T) {
 	testContent := []byte("Chunked\nEncoding 1234567890")
-	closeServer := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
+	closeServer, url := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
 		header.Set("Transfer-Encoding", "chunked")
 
 		var cacheBuf bytes.Buffer
@@ -249,7 +249,7 @@ func TestClient_ChunkedTransferEncoding(t *testing.T) {
 	})
 	defer closeServer()
 
-	req := NewRequest(specs.HttpMethodGet, specs.MustParseUrl("http://127.0.0.1:80"))
+	req := NewRequest(specs.HttpMethodGet, url)
 
 	resp, err := DefaultClient().Make(req)
 
@@ -266,7 +266,7 @@ func TestClient_ChunkedTransferEncoding(t *testing.T) {
 
 func TestClient_ChunkedAndGzipEncoding(t *testing.T) {
 	testContent := []byte("Content\nEncoding 1234567890")
-	closeServer := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
+	closeServer, url := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
 		var cacheBuf bytes.Buffer
 		cw := httputil.NewChunkedWriter(&cacheBuf)
 		ew := gzip.NewWriter(cw)
@@ -282,7 +282,7 @@ func TestClient_ChunkedAndGzipEncoding(t *testing.T) {
 	})
 	defer closeServer()
 
-	req := NewRequest(specs.HttpMethodGet, specs.MustParseUrl("http://127.0.0.1:80"))
+	req := NewRequest(specs.HttpMethodGet, url)
 
 	resp, err := DefaultClient().Make(req)
 
@@ -299,7 +299,7 @@ func TestClient_ChunkedAndGzipEncoding(t *testing.T) {
 
 func TestClient_ChunkedAndDeflateEncoding(t *testing.T) {
 	testContent := []byte("Content\nEncoding 1234567890")
-	closeServer := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
+	closeServer, url := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
 		var cacheBuf bytes.Buffer
 		cw := httputil.NewChunkedWriter(&cacheBuf)
 		ew, err := flate.NewWriter(cw, flate.DefaultCompression)
@@ -318,7 +318,7 @@ func TestClient_ChunkedAndDeflateEncoding(t *testing.T) {
 	})
 	defer closeServer()
 
-	req := NewRequest(specs.HttpMethodGet, specs.MustParseUrl("http://127.0.0.1:80"))
+	req := NewRequest(specs.HttpMethodGet, url)
 
 	resp, err := DefaultClient().Make(req)
 
@@ -335,7 +335,7 @@ func TestClient_ChunkedAndDeflateEncoding(t *testing.T) {
 
 func TestClient_ChunkedAndBrotliEncoding(t *testing.T) {
 	testContent := []byte("Content\nEncoding 1234567890")
-	closeServer := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
+	closeServer, url := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
 		var cacheBuf bytes.Buffer
 		cw := httputil.NewChunkedWriter(&cacheBuf)
 		ew := brotli.NewWriter(cw)
@@ -351,7 +351,7 @@ func TestClient_ChunkedAndBrotliEncoding(t *testing.T) {
 	})
 	defer closeServer()
 
-	req := NewRequest(specs.HttpMethodGet, specs.MustParseUrl("http://127.0.0.1:80"))
+	req := NewRequest(specs.HttpMethodGet, url)
 
 	resp, err := DefaultClient().Make(req)
 
