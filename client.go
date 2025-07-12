@@ -11,6 +11,7 @@ import (
 	"github.com/oesand/giglet/internal/encoding"
 	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
+	"golang.org/x/net/http/httpguts"
 	"io"
 	"net"
 	"net/http/httputil"
@@ -240,6 +241,10 @@ func (cln *Client) MakeContext(ctx context.Context, request ClientRequest) (Clie
 
 func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.Url, request ClientRequest) (*client.HttpClientResponse, error) {
 	header := request.Header()
+	if header == nil {
+		panic("nil request.header pointer")
+	}
+
 	writer, _ := request.(BodyWriter)
 	hijacker, _ := request.(HijackRequest)
 
@@ -277,7 +282,11 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 		header.Set("Accept-Encoding", encoding.DefaultAcceptEncoding)
 	}
 	if !header.Has("Host") {
-		header.Set("Host", url.Host)
+		host, err := httpguts.PunycodeHostPort(url.Host)
+		if err != nil {
+			return nil, err
+		}
+		header.Set("Host", host)
 	}
 	if url.Username != "" && !header.Has("Authorization") {
 		header.Set("Authorization", "Basic "+specs.BasicAuthHeader(url.Username, url.Password))
@@ -330,8 +339,8 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 
 	if method.IsPostable() && writer != nil {
 		if isChunked {
-			chunkedWriter := httputil.NewChunkedWriter(conn)
-			err = writer.WriteBody(chunkedWriter)
+			chunkedWriter := encoding.NewChunkedWriter(conn)
+			err = writer.WriteBody(chunkedWriter) // "0\r\n"
 			chunkedWriter.Close()
 		} else {
 			err = writer.WriteBody(conn)

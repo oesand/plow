@@ -5,9 +5,9 @@ import (
 	"time"
 )
 
-type timeoutResErr[T any] struct {
-	res T
-	err error
+type ResultErrPair[T any] struct {
+	Res T
+	Err error
 }
 
 func CallWithTimeoutContext[TR any](ctx context.Context, timeout time.Duration, fn func(context.Context) (TR, error)) (TR, error) {
@@ -18,11 +18,11 @@ func CallWithTimeoutContext[TR any](ctx context.Context, timeout time.Duration, 
 	ctx, cancelTimeout := context.WithTimeout(ctx, timeout)
 	defer cancelTimeout()
 
-	resc := make(chan timeoutResErr[TR], 1)
+	resc := make(chan ResultErrPair[TR], 1)
 
-	go func(ctx context.Context, ch chan timeoutResErr[TR]) {
+	go func(ctx context.Context, ch chan ResultErrPair[TR]) {
 		res, err := fn(ctx)
-		ch <- timeoutResErr[TR]{res, err}
+		ch <- ResultErrPair[TR]{res, err}
 	}(ctx, resc)
 
 	select {
@@ -30,7 +30,7 @@ func CallWithTimeoutContext[TR any](ctx context.Context, timeout time.Duration, 
 		err := ctx.Err()
 		return *new(TR), CatchCommonErr(err)
 	case res := <-resc:
-		return res.res, CatchCommonErr(res.err)
+		return res.Res, CatchCommonErr(res.Err)
 	}
 }
 

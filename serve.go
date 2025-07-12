@@ -18,21 +18,23 @@ import (
 	"time"
 )
 
-func (server *Server) Serve(listener net.Listener) error {
+func (srv *Server) Serve(listener net.Listener) error {
 	if listener == nil {
 		panic("nil listener")
 	}
-	if server.Handler == nil {
+	if srv.Handler == nil {
 		panic("nil server handler")
 	}
-	if server.isShuttingdown.Load() {
+	srv.once.Do(srv.beforeOnce)
+
+	if srv.IsShutdown() {
 		return specs.ErrClosed
 	}
 
-	handler := server.Handler
+	handler := srv.Handler
 
-	server.listenerTrack.Add(1)
-	defer server.listenerTrack.Done()
+	srv.listenerTrack.Add(1)
+	defer srv.listenerTrack.Done()
 
 	var attemptDelay time.Duration
 	var connTrack sync.WaitGroup
@@ -41,15 +43,7 @@ func (server *Server) Serve(listener net.Listener) error {
 	ctx, cancelCtx := context.WithCancel(context.Background())
 	for {
 		var conn net.Conn
-		conn, err = listener.Accept()
-		if server.isShuttingdown.Load() {
-			if err == nil && conn != nil {
-				conn.Close()
-			}
-			err = specs.ErrClosed
-			cancelCtx()
-			break
-		}
+		conn, err = srv.accept(ctx, listener)
 
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
@@ -68,21 +62,16 @@ func (server *Server) Serve(listener net.Listener) error {
 		}
 
 		attemptDelay = 0
-		if server.FilterConn != nil {
-			if allow := server.FilterConn(conn.RemoteAddr()); !allow {
+		if srv.FilterConn != nil {
+			if allow := srv.FilterConn(conn.RemoteAddr()); !allow {
 				conn.Close()
 				continue
 			}
 		}
 
-		if server.isShuttingdown.Load() {
-			cancelCtx()
-			break
-		}
-
 		connTrack.Add(1)
 		go func() {
-			server.handle(ctx, conn, handler)
+			srv.handle(ctx, conn, handler)
 			connTrack.Done()
 		}()
 	}
@@ -92,6 +81,24 @@ func (server *Server) Serve(listener net.Listener) error {
 	connTrack.Wait()
 
 	return err
+}
+
+func (srv *Server) accept(ctx context.Context, listener net.Listener) (net.Conn, error) {
+	connRes := make(chan catch.ResultErrPair[net.Conn], 1)
+
+	go func() {
+		conn, err := listener.Accept()
+		connRes <- catch.ResultErrPair[net.Conn]{conn, err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-srv.shuttingDown:
+		return nil, specs.ErrClosed
+	case res := <-connRes:
+		return res.Res, res.Err
+	}
 }
 
 func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
@@ -252,6 +259,8 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 		if shouldResponseBody {
 			if req.Chunked {
 				header.Set("Transfer-Encoding", "chunked")
+			} else if header.Get("Transfer-Encoding") == "chunked" {
+				req.Chunked = true
 			} else {
 				maxEncodingSize := DefaultMaxEncodingSize
 				if srv.MaxEncodingSize > 0 {
@@ -333,7 +342,7 @@ func (srv *Server) catchCancelled(ctx context.Context) bool {
 
 func (srv *Server) writeBody(writable BodyWriter, writer io.Writer, chunked bool, contentEncoding string) error {
 	if chunked {
-		chw := httputil.NewChunkedWriter(writer)
+		chw := encoding.NewChunkedWriter(writer)
 		defer chw.Close()
 		writer = chw
 	}

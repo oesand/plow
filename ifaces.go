@@ -27,7 +27,6 @@ type Request interface {
 
 type Response interface {
 	StatusCode() specs.StatusCode
-	SetStatusCode(specs.StatusCode)
 	Header() *specs.Header
 }
 

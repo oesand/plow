@@ -7,6 +7,7 @@ import (
 	"github.com/oesand/giglet/specs"
 	"io"
 	"net"
+	"net/http"
 	"testing"
 	"time"
 )
@@ -17,6 +18,28 @@ func checkResponseBody(t *testing.T, resp ClientResponse, expected []byte) {
 	}
 
 	body := resp.Body()
+	if body == nil {
+		t.Fatal("response body is nil")
+	}
+
+	defer body.Close()
+
+	data, err := io.ReadAll(body)
+	if err != nil {
+		t.Fatal("read all:", err)
+	}
+
+	if !bytes.Equal(data, expected) {
+		t.Error("invalid response:", string(data))
+	}
+}
+
+func checkHttpResponseBody(t *testing.T, resp *http.Response, expected []byte) {
+	if resp.StatusCode != 200 {
+		t.Fatal("invalid status code:", resp.StatusCode)
+	}
+
+	body := resp.Body
 	if body == nil {
 		t.Fatal("response body is nil")
 	}

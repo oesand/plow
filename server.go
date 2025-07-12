@@ -7,7 +7,6 @@ import (
 	"net"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -92,45 +91,57 @@ type Server struct {
 
 	nextProtos map[string]NextProtoHandler
 
-	listenerTrack  sync.WaitGroup
-	isShuttingdown atomic.Bool
+	listenerTrack sync.WaitGroup
+	shuttingDown  chan struct{}
 
 	mutex sync.Mutex
+	once  sync.Once
 }
 
-func (server *Server) logger() *log.Logger {
-	if server.Logger != nil {
-		return server.Logger
+func (srv *Server) beforeOnce() {
+	srv.shuttingDown = make(chan struct{})
+}
+
+func (srv *Server) logger() *log.Logger {
+	if srv.Logger != nil {
+		return srv.Logger
 	}
 	return log.Default()
 }
 
-func (server *Server) HasNextProto(proto string) bool {
-	server.mutex.Lock()
-	defer server.mutex.Unlock()
+func (srv *Server) HasNextProto(proto string) bool {
+	srv.mutex.Lock()
+	defer srv.mutex.Unlock()
 
-	_, has := server.nextProtos[proto]
+	_, has := srv.nextProtos[proto]
 	return has
 }
 
-func (server *Server) NextProto(proto string, handler NextProtoHandler) {
-	server.mutex.Lock()
-	defer server.mutex.Unlock()
+func (srv *Server) NextProto(proto string, handler NextProtoHandler) {
+	srv.mutex.Lock()
+	defer srv.mutex.Unlock()
 
-	if server.nextProtos == nil {
-		server.nextProtos = map[string]NextProtoHandler{}
+	if srv.nextProtos == nil {
+		srv.nextProtos = map[string]NextProtoHandler{}
 	}
-	if server.TLSConfig == nil {
-		server.TLSConfig = &tls.Config{}
+	if srv.TLSConfig == nil {
+		srv.TLSConfig = &tls.Config{}
 	}
-	if !slices.Contains(server.TLSConfig.NextProtos, proto) {
-		server.TLSConfig.NextProtos = append(server.TLSConfig.NextProtos, proto)
+	if !slices.Contains(srv.TLSConfig.NextProtos, proto) {
+		srv.TLSConfig.NextProtos = append(srv.TLSConfig.NextProtos, proto)
 	}
-	server.nextProtos[proto] = handler
+	srv.nextProtos[proto] = handler
 }
 
-func (server *Server) ListenAndServe(addr string) error {
-	if server.isShuttingdown.Load() {
+func (srv *Server) ListenAndServe(addr string) error {
+	if srv.shuttingDown != nil {
+		select {
+		case <-srv.shuttingDown:
+			return specs.ErrClosed
+		default:
+		}
+	}
+	if srv.IsShutdown() {
 		return specs.ErrClosed
 	} else if addr == "" {
 		addr = ":http"
@@ -139,11 +150,11 @@ func (server *Server) ListenAndServe(addr string) error {
 	if err != nil {
 		return err
 	}
-	return server.Serve(lst)
+	return srv.Serve(lst)
 }
 
-func (server *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
-	if server.isShuttingdown.Load() {
+func (srv *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
+	if srv.IsShutdown() {
 		return specs.ErrClosed
 	} else if addr == "" {
 		addr = ":http"
@@ -152,11 +163,11 @@ func (server *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
 	if err != nil {
 		return err
 	}
-	return server.ServeTLS(lst, certFile, keyFile)
+	return srv.ServeTLS(lst, certFile, keyFile)
 }
 
-func (server *Server) ListenAndServeTLSRaw(addr string, cert tls.Certificate) error {
-	if server.isShuttingdown.Load() {
+func (srv *Server) ListenAndServeTLSRaw(addr string, cert tls.Certificate) error {
+	if srv.IsShutdown() {
 		return specs.ErrClosed
 	} else if addr == "" {
 		addr = ":http"
@@ -165,11 +176,11 @@ func (server *Server) ListenAndServeTLSRaw(addr string, cert tls.Certificate) er
 	if err != nil {
 		return err
 	}
-	return server.serveTLSRaw(lst, &cert)
+	return srv.serveTLSRaw(lst, &cert)
 }
 
 func (srv *Server) ServeTLS(lst net.Listener, certFile, keyFile string) error {
-	if srv.isShuttingdown.Load() {
+	if srv.IsShutdown() {
 		return specs.ErrClosed
 	} else if len(certFile) == 0 || len(keyFile) == 0 {
 		panic("unknown certificate source")
@@ -181,18 +192,18 @@ func (srv *Server) ServeTLS(lst net.Listener, certFile, keyFile string) error {
 	return srv.serveTLSRaw(lst, &cert)
 }
 
-func (server *Server) ServeTLSRaw(lst net.Listener, cert tls.Certificate) error {
-	return server.serveTLSRaw(lst, &cert)
+func (srv *Server) ServeTLSRaw(lst net.Listener, cert tls.Certificate) error {
+	return srv.serveTLSRaw(lst, &cert)
 }
 
-func (server *Server) serveTLSRaw(lst net.Listener, cert *tls.Certificate) error {
-	if server.isShuttingdown.Load() {
+func (srv *Server) serveTLSRaw(lst net.Listener, cert *tls.Certificate) error {
+	if srv.IsShutdown() {
 		return specs.ErrClosed
 	}
 
 	var config *tls.Config
-	if server.TLSConfig != nil {
-		config = server.TLSConfig.Clone()
+	if srv.TLSConfig != nil {
+		config = srv.TLSConfig.Clone()
 	} else {
 		config = &tls.Config{}
 	}
@@ -208,10 +219,25 @@ func (server *Server) serveTLSRaw(lst net.Listener, cert *tls.Certificate) error
 	}
 
 	listener := tls.NewListener(lst, config)
-	return server.Serve(listener)
+	return srv.Serve(listener)
 }
 
-func (server *Server) Shutdown() {
-	server.isShuttingdown.Store(true)
-	server.listenerTrack.Wait()
+func (srv *Server) IsShutdown() bool {
+	if srv.shuttingDown != nil {
+		select {
+		case <-srv.shuttingDown:
+			return true
+		default:
+		}
+	}
+	return false
+}
+
+func (srv *Server) Shutdown() {
+	if srv.shuttingDown == nil {
+		srv.shuttingDown = make(chan struct{})
+	}
+	close(srv.shuttingDown)
+
+	srv.listenerTrack.Wait()
 }

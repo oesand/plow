@@ -1,20 +1,26 @@
 package giglet
 
 import (
+	"bufio"
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"github.com/andybalholm/brotli"
+	"github.com/oesand/giglet/internal/server"
 	"github.com/oesand/giglet/specs"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestClient_GetRequest(t *testing.T) {
@@ -47,7 +53,7 @@ func TestClient_PostRequest(t *testing.T) {
 		if r.Header.Get("X-Hello-World") != "xyz-123" ||
 			r.Header.Get("Content-Length") != strconv.Itoa(len(requestBody)) ||
 			r.Header.Get("x-Type") != "json" {
-			t.Error("not found expected headers")
+			t.Errorf("not found expected headers: %+v", r.Header)
 		}
 
 		b, _ := io.ReadAll(r.Body)
@@ -262,6 +268,119 @@ func TestClient_ChunkedTransferEncoding(t *testing.T) {
 	}
 
 	checkResponseBody(t, resp, testContent)
+}
+
+func TestClient_PostChunkedTransferEncodingRequestHttpTest(t *testing.T) {
+	requestBody := []byte(`{"key": "value"}`)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Hello-World") != "xyz-123" ||
+			r.Header.Get("Content-Length") != "" {
+			t.Errorf("not found expected headers: %+v", r.Header)
+		}
+
+		if len(r.TransferEncoding) != 1 || r.TransferEncoding[0] != "chunked" {
+			t.Errorf("not found expected transfer encoding: %+v", r.TransferEncoding)
+		}
+
+		fmt.Printf("Type: %s \n", reflect.TypeOf(r.Body))
+
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+
+		if !bytes.Equal(b, requestBody) {
+			t.Errorf("expected %s, got %s", string(requestBody), string(b))
+		}
+		w.Write([]byte("received"))
+	}))
+	defer server.Close()
+
+	req := NewBufferRequest(specs.HttpMethodPost, specs.MustParseUrl(server.URL), requestBody, specs.ContentTypePlain)
+	req.Header().Set("x-hello-world", "xyz-123")
+	req.Header().Set("Transfer-Encoding", "chunked")
+
+	resp, err := DefaultClient().Make(req)
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	checkResponseBody(t, resp, []byte("received"))
+}
+
+func TestClient_PostChunkedTransferEncodingRequest(t *testing.T) {
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		panic(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	requestBody := []byte(`{"key": "value"}`)
+
+	go func() {
+		var conn net.Conn
+		for {
+			conn, err = listener.Accept()
+
+			select {
+			case <-ctx.Done():
+			default:
+			}
+
+			if err != nil {
+				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+					time.Sleep(5 * time.Millisecond)
+					continue
+				}
+				t.Fatal(err)
+			}
+			break
+		}
+
+		reader := bufio.NewReader(conn)
+		req, err := server.ReadRequest(ctx, reader, 1024, 8024)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if req.Header().Get("X-Hello-World") != "xyz-123" ||
+			req.Header().Get("Transfer-Encoding") != "chunked" {
+			t.Errorf("not found expected headers: %+v", req.Header())
+		}
+
+		cr := httputil.NewChunkedReader(reader)
+		b, err := io.ReadAll(cr)
+		if err != nil {
+			t.Fatalf("Read all: %s", err)
+		}
+		if !bytes.Equal(b, requestBody) {
+			t.Errorf("expected %s, got %s", string(requestBody), string(b))
+		}
+
+		server.WriteResponseHead(conn, true, specs.StatusCodeOK, specs.NewHeader())
+		conn.Write([]byte("received"))
+		conn.Close()
+	}()
+
+	defer func() {
+		listener.Close()
+		cancel()
+	}()
+
+	url := specs.MustParseUrl("http://" + listener.Addr().String())
+	req := NewBufferRequest(specs.HttpMethodPost, url, requestBody, specs.ContentTypePlain)
+	req.Header().Set("Transfer-Encoding", "chunked")
+	req.Header().Set("x-hello-world", "xyz-123")
+
+	resp, err := DefaultClient().Make(req)
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	checkResponseBody(t, resp, []byte("received"))
 }
 
 func TestClient_ChunkedAndGzipEncoding(t *testing.T) {
