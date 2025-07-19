@@ -21,10 +21,6 @@ import (
 )
 
 func DefaultClient() *Client {
-	dialer := net.Dialer{
-		Timeout:   30 * time.Second,
-		KeepAlive: 10 * time.Second,
-	}
 	return &Client{
 		ReadLineMaxLength:   1024,
 		HeadMaxLength:       8 * 1024,
@@ -32,7 +28,6 @@ func DefaultClient() *Client {
 		ReadTimeout:         10 * time.Second,
 		WriteTimeout:        10 * time.Second,
 		TLSHandshakeTimeout: 5 * time.Second,
-		DialContext:         dialer.DialContext,
 		MaxRedirectCount:    DefaultMaxRedirectCount,
 	}
 }
@@ -340,7 +335,7 @@ func (cln *Client) send(ctx context.Context, method specs.HttpMethod, url specs.
 	if method.IsPostable() && writer != nil {
 		if isChunked {
 			chunkedWriter := encoding.NewChunkedWriter(conn)
-			err = writer.WriteBody(chunkedWriter) // "0\r\n"
+			err = writer.WriteBody(chunkedWriter)
 			chunkedWriter.Close()
 		} else {
 			err = writer.WriteBody(conn)
@@ -487,7 +482,7 @@ func (cln *Client) dial(ctx context.Context, host string, port uint16, isTls boo
 	if cln.DialContext != nil {
 		conn, err = cln.DialContext(ctx, "tcp", address)
 	} else {
-		conn, err = zeroDialer.DialContext(ctx, "tcp", address)
+		conn, err = defaultDialer.DialContext(ctx, "tcp", address)
 	}
 
 	if err = catch.CatchCommonErr(err); err != nil {

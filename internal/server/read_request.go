@@ -11,12 +11,13 @@ import (
 	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
 	"golang.org/x/net/http/httpguts"
+	"net"
 	"strings"
 )
 
 func ReadRequest(
-	ctx context.Context, reader *bufio.Reader,
-	lineLimit int64, totalLimit int64,
+	ctx context.Context, remoteAddr net.Addr,
+	reader *bufio.Reader, lineLimit int64, totalLimit int64,
 ) (*HttpRequest, error) {
 	select {
 	case <-ctx.Done():
@@ -121,10 +122,11 @@ func ReadRequest(
 		method:     method,
 		protoMajor: protoMajor,
 		protoMinor: protoMinor,
+		remoteAddr: remoteAddr,
 		url:        url,
 		header:     header,
-		Chunked:    chunkedEncoding,
 
+		Chunked:          chunkedEncoding,
 		SelectedEncoding: selectedEncoding,
 	}
 

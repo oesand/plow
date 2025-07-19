@@ -151,7 +151,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 		if srv.ReadTimeout > 0 {
 			conn.SetReadDeadline(time.Now().Add(srv.ReadTimeout))
 		}
-		req, err := server.ReadRequest(ctx, headerReader, srv.ReadLineMaxLength, srv.HeadMaxLength)
+		req, err := server.ReadRequest(ctx, conn.RemoteAddr(), headerReader, srv.ReadLineMaxLength, srv.HeadMaxLength)
 
 		if err != nil {
 			stream.DefaultBufioReaderPool.Put(headerReader)

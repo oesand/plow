@@ -4,6 +4,7 @@ import (
 	"github.com/oesand/giglet/internal/server"
 	"github.com/oesand/giglet/specs"
 	"net"
+	"time"
 )
 
 const (
@@ -18,8 +19,12 @@ const (
 )
 
 var (
-	zeroDialer         net.Dialer
 	httpV1NextProtoTLS = "http/1.1"
+
+	defaultDialer = net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 10 * time.Second,
+	}
 
 	responseErrDowngradeHTTPS = &server.ErrorResponse{
 		Code: specs.StatusCodeBadRequest,

@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-var DefaultBufioWriterPool BufioWriterPool
+var DefaultBufioWriterPool = BufioWriterPool{MaxSize: 1024}
 
 type BufioWriterPool struct {
 	pool    sync.Pool

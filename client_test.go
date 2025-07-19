@@ -147,100 +147,7 @@ func TestClient_RedirectInvalidLocation(t *testing.T) {
 	}
 }
 
-// Test encoding
-
-func TestClient_GzipEncoding(t *testing.T) {
-	testContent := []byte("Content\nEncoding 1234567890")
-	closeServer, url := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
-		var cacheBuf bytes.Buffer
-		cw := gzip.NewWriter(&cacheBuf)
-		cw.Write(testContent)
-		cw.Close()
-
-		body := cacheBuf.Bytes()
-		header.Set("Content-Encoding", "gzip")
-		header.Set("Content-Length", strconv.Itoa(len(body)))
-		return specs.StatusCodeOK, body
-	})
-	defer closeServer()
-
-	req := NewRequest(specs.HttpMethodGet, url)
-
-	resp, err := DefaultClient().Make(req)
-
-	if err != nil {
-		t.Fatal("req:", err)
-	}
-
-	if resp.Header().Get("Content-Encoding") != "gzip" {
-		t.Errorf("expected gzip encoding, got %s", resp.Header().Get("Content-Encoding"))
-	}
-
-	checkResponseBody(t, resp, testContent)
-}
-
-func TestClient_DeflateEncoding(t *testing.T) {
-	testContent := []byte("Content\nEncoding 1234567890")
-	closeServer, url := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
-		var cacheBuf bytes.Buffer
-		cw, err := flate.NewWriter(&cacheBuf, flate.DefaultCompression)
-		if err != nil {
-			t.Fatal(err)
-		}
-		cw.Write(testContent)
-		cw.Close()
-
-		body := cacheBuf.Bytes()
-		header.Set("Content-Encoding", "deflate")
-		header.Set("Content-Length", strconv.Itoa(len(body)))
-		return specs.StatusCodeOK, body
-	})
-	defer closeServer()
-
-	req := NewRequest(specs.HttpMethodGet, url)
-
-	resp, err := DefaultClient().Make(req)
-
-	if err != nil {
-		t.Fatal("req:", err)
-	}
-
-	if resp.Header().Get("Content-Encoding") != "deflate" {
-		t.Errorf("expected deflate encoding, got %s", resp.Header().Get("Content-Encoding"))
-	}
-
-	checkResponseBody(t, resp, testContent)
-}
-
-func TestClient_BrotliEncoding(t *testing.T) {
-	testContent := []byte("Content\nEncoding 1234567890")
-	closeServer, url := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
-		var cacheBuf bytes.Buffer
-		cw := brotli.NewWriter(&cacheBuf)
-		cw.Write(testContent)
-		cw.Close()
-
-		body := cacheBuf.Bytes()
-		header.Set("Content-Encoding", "br")
-		header.Set("Content-Length", strconv.Itoa(len(body)))
-		return specs.StatusCodeOK, body
-	})
-	defer closeServer()
-
-	req := NewRequest(specs.HttpMethodGet, url)
-
-	resp, err := DefaultClient().Make(req)
-
-	if err != nil {
-		t.Fatal("req:", err)
-	}
-
-	if resp.Header().Get("Content-Encoding") != "br" {
-		t.Errorf("expected br encoding, got %s", resp.Header().Get("Content-Encoding"))
-	}
-
-	checkResponseBody(t, resp, testContent)
-}
+// Test chunked transfer
 
 func TestClient_ChunkedTransferEncoding(t *testing.T) {
 	testContent := []byte("Chunked\nEncoding 1234567890")
@@ -341,7 +248,7 @@ func TestClient_PostChunkedTransferEncodingRequest(t *testing.T) {
 		}
 
 		reader := bufio.NewReader(conn)
-		req, err := server.ReadRequest(ctx, reader, 1024, 8024)
+		req, err := server.ReadRequest(ctx, conn.RemoteAddr(), reader, 1024, 8024)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -382,6 +289,103 @@ func TestClient_PostChunkedTransferEncodingRequest(t *testing.T) {
 
 	checkResponseBody(t, resp, []byte("received"))
 }
+
+// Test content encoding
+
+func TestClient_GzipEncoding(t *testing.T) {
+	testContent := []byte("Content\nEncoding 1234567890")
+	closeServer, url := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
+		var cacheBuf bytes.Buffer
+		cw := gzip.NewWriter(&cacheBuf)
+		cw.Write(testContent)
+		cw.Close()
+
+		body := cacheBuf.Bytes()
+		header.Set("Content-Encoding", "gzip")
+		header.Set("Content-Length", strconv.Itoa(len(body)))
+		return specs.StatusCodeOK, body
+	})
+	defer closeServer()
+
+	req := NewRequest(specs.HttpMethodGet, url)
+
+	resp, err := DefaultClient().Make(req)
+
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	if resp.Header().Get("Content-Encoding") != "gzip" {
+		t.Errorf("expected gzip encoding, got %s", resp.Header().Get("Content-Encoding"))
+	}
+
+	checkResponseBody(t, resp, testContent)
+}
+
+func TestClient_DeflateEncoding(t *testing.T) {
+	testContent := []byte("Content\nEncoding 1234567890")
+	closeServer, url := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
+		var cacheBuf bytes.Buffer
+		cw, err := flate.NewWriter(&cacheBuf, flate.DefaultCompression)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cw.Write(testContent)
+		cw.Close()
+
+		body := cacheBuf.Bytes()
+		header.Set("Content-Encoding", "deflate")
+		header.Set("Content-Length", strconv.Itoa(len(body)))
+		return specs.StatusCodeOK, body
+	})
+	defer closeServer()
+
+	req := NewRequest(specs.HttpMethodGet, url)
+
+	resp, err := DefaultClient().Make(req)
+
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	if resp.Header().Get("Content-Encoding") != "deflate" {
+		t.Errorf("expected deflate encoding, got %s", resp.Header().Get("Content-Encoding"))
+	}
+
+	checkResponseBody(t, resp, testContent)
+}
+
+func TestClient_BrotliEncoding(t *testing.T) {
+	testContent := []byte("Content\nEncoding 1234567890")
+	closeServer, url := newTestServer(func(header *specs.Header) (specs.StatusCode, []byte) {
+		var cacheBuf bytes.Buffer
+		cw := brotli.NewWriter(&cacheBuf)
+		cw.Write(testContent)
+		cw.Close()
+
+		body := cacheBuf.Bytes()
+		header.Set("Content-Encoding", "br")
+		header.Set("Content-Length", strconv.Itoa(len(body)))
+		return specs.StatusCodeOK, body
+	})
+	defer closeServer()
+
+	req := NewRequest(specs.HttpMethodGet, url)
+
+	resp, err := DefaultClient().Make(req)
+
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	if resp.Header().Get("Content-Encoding") != "br" {
+		t.Errorf("expected br encoding, got %s", resp.Header().Get("Content-Encoding"))
+	}
+
+	checkResponseBody(t, resp, testContent)
+}
+
+// Test combined encoding and chunked
 
 func TestClient_ChunkedAndGzipEncoding(t *testing.T) {
 	testContent := []byte("Content\nEncoding 1234567890")

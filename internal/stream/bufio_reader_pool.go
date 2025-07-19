@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-var DefaultBufioReaderPool BufioReaderPool
+var DefaultBufioReaderPool = BufioReaderPool{MaxSize: 1024}
 
 type BufioReaderPool struct {
 	pool    sync.Pool

@@ -13,10 +13,10 @@ type HijackHandler func(ctx context.Context, conn net.Conn)
 type HttpRequest struct {
 	_ internal.NoCopy
 
-	conn     net.Conn
 	hijacker HijackHandler
 
 	protoMajor, protoMinor uint16
+	remoteAddr             net.Addr
 	method                 specs.HttpMethod
 	url                    *specs.Url
 	header                 *specs.Header
@@ -31,7 +31,7 @@ func (req *HttpRequest) ProtoVersion() (major, minor uint16) {
 }
 
 func (req *HttpRequest) RemoteAddr() net.Addr {
-	return req.conn.RemoteAddr()
+	return req.remoteAddr
 }
 
 func (req *HttpRequest) Hijack(handler HijackHandler) {

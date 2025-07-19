@@ -1,13 +1,17 @@
 package giglet
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"github.com/oesand/giglet/internal"
+	"github.com/oesand/giglet/internal/client"
 	"github.com/oesand/giglet/internal/server"
 	"github.com/oesand/giglet/specs"
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -103,4 +107,39 @@ func newTestServer(handler func(header *specs.Header) (specs.StatusCode, []byte)
 	url := specs.MustParseUrl("http://" + listener.Addr().String())
 
 	return closeFunc, url
+}
+
+func newTestClientSend(method specs.HttpMethod, url *specs.Url, header *specs.Header, body []byte) (ClientResponse, net.Conn, error) {
+	address := url.Host + ":" + strconv.FormatUint(uint64(url.Port), 10)
+	conn, err := defaultDialer.Dial("tcp", address)
+	if err != nil {
+		return nil, nil, err
+	}
+	conn.SetDeadline(time.Now().Add(20 * time.Second))
+
+	_, err = client.WriteRequestHead(conn, method, url, header)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if body != nil {
+		_, err = conn.Write(body)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	headerReader := bufio.NewReader(conn)
+
+	resp, err := client.ReadResponse(context.Background(), headerReader, 1024, 8*1024)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
+
+	resp.Reader = internal.ReadCloser(io.MultiReader(
+		bytes.NewReader(extraBuffered), conn), conn)
+
+	return resp, conn, nil
 }
