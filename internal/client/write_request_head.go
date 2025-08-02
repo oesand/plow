@@ -14,17 +14,17 @@ var (
 	httpV11            = []byte("HTTP/1.1")
 )
 
-func WriteRequestHead(writer io.Writer, method specs.HttpMethod, url *specs.Url, header *specs.Header) (int64, error) {
+func WriteRequestHead(writer io.Writer, method specs.HttpMethod, path string, query specs.Query, header *specs.Header) (int64, error) {
 	// Headline
 	buf := bytes.NewBufferString(string(method))
 	buf.WriteRune(' ')
-	if path := url.Path; path != "" {
+	if path != "" {
 		buf.WriteString(path)
 	} else {
 		buf.WriteByte('/')
 	}
 
-	if query := url.Query; query != nil && len(query) > 0 {
+	if query != nil && len(query) > 0 {
 		buf.WriteRune('?')
 		buf.WriteString(query.String())
 	}

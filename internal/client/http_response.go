@@ -9,8 +9,7 @@ type HttpClientResponse struct {
 	status specs.StatusCode
 	header *specs.Header
 
-	Reader   io.ReadCloser
-	Hijacked bool
+	Reader io.ReadCloser
 }
 
 func (resp *HttpClientResponse) StatusCode() specs.StatusCode {

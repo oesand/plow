@@ -217,7 +217,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 			break
 		}
 
-		resp := handler(ctx, req)
+		resp := handler.Handle(ctx, req)
 		var header *specs.Header
 		var code specs.StatusCode
 		var writable BodyWriter

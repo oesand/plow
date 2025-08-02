@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/tls"
 	"github.com/andybalholm/brotli"
+	"github.com/oesand/giglet/internal/client"
 	"github.com/oesand/giglet/internal/encoding"
 	"github.com/oesand/giglet/internal/server"
 	"github.com/oesand/giglet/mock"
@@ -20,11 +21,11 @@ import (
 )
 
 func TestServer_GetRequest(t *testing.T) {
-	server := DefaultServer(func(ctx context.Context, request Request) Response {
-		return NewTextResponse("okay", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
+		return TextResponse("okay", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
 			resp.Header().Set("x-hello-world", "xyz-123")
 		})
-	})
+	}))
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -52,7 +53,7 @@ func TestServer_GetRequest(t *testing.T) {
 func TestServer_PostRequest(t *testing.T) {
 	requestBody := []byte(`{"key": "value"}`)
 
-	server := DefaultServer(func(ctx context.Context, request Request) Response {
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
 		if request.Header().Get("X-Hello-World") != "xyz-123" ||
 			request.Header().Get("Content-Length") != strconv.Itoa(len(requestBody)) {
 			t.Error("not found expected headers")
@@ -63,10 +64,10 @@ func TestServer_PostRequest(t *testing.T) {
 			t.Errorf("expected %s, got %s", string(requestBody), string(b))
 		}
 
-		return NewTextResponse("okay", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+		return TextResponse("okay", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
 			resp.Header().Set("x-hello-world", "321-xyz")
 		})
-	})
+	}))
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -101,25 +102,25 @@ func TestServer_SendAnyResponse(t *testing.T) {
 	}{
 		{
 			name:     "TextResponse",
-			response: NewTextResponse("text response", specs.ContentTypePlain, specs.StatusCodeOK),
+			response: TextResponse("text response", specs.ContentTypePlain, specs.StatusCodeOK),
 			wantBody: []byte("text response"),
 		},
 		{
 			name:     "BufferResponse",
-			response: NewBufferResponse([]byte("buffer response"), specs.ContentTypePlain, specs.StatusCodeOK),
+			response: BufferResponse([]byte("buffer response"), specs.ContentTypePlain, specs.StatusCodeOK),
 			wantBody: []byte("buffer response"),
 		},
 		{
 			name:     "StreamResponse",
-			response: NewStreamResponse(bytes.NewReader([]byte("stream response")), specs.ContentTypePlain, 15, specs.StatusCodeOK),
+			response: StreamResponse(bytes.NewReader([]byte("stream response")), specs.ContentTypePlain, 15, specs.StatusCodeOK),
 			wantBody: []byte("stream response"),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := DefaultServer(func(ctx context.Context, request Request) Response {
+			server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
 				return tt.response
-			})
+			}))
 
 			listener, err := net.Listen("tcp4", "127.0.0.1:0")
 			if err != nil {
@@ -144,7 +145,7 @@ func TestServer_SendAnyResponse(t *testing.T) {
 // Test chunked encoding
 
 func TestServer_ChunkedTransferEncodingTwoWays(t *testing.T) {
-	server := DefaultServer(func(ctx context.Context, request Request) Response {
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
 		req := request.(*server.HttpRequest)
 		if request.Header().Get("X-Hello-World") != "xyz-123" ||
 			request.Header().Get("Transfer-Encoding") != "chunked" {
@@ -169,10 +170,10 @@ func TestServer_ChunkedTransferEncodingTwoWays(t *testing.T) {
 			t.Error("invalid request:", string(data))
 		}
 
-		return NewTextResponse("response encoded", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+		return TextResponse("response encoded", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
 			resp.Header().Set("x-hello-world", "xyz-123")
 		})
-	})
+	}))
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -230,16 +231,16 @@ func TestServer_ChunkedTransferEncodingTwoWays(t *testing.T) {
 }
 
 func TestServer_ChunkedTransferEncodingResponse(t *testing.T) {
-	server := DefaultServer(func(ctx context.Context, request Request) Response {
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
 		if request.Header().Get("X-Hello-World") != "xyz-123" {
 			t.Errorf("not found expected headers, %+v", request.Header())
 		}
 
-		return NewTextResponse("response encoded", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+		return TextResponse("response encoded", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
 			resp.Header().Set("x-hello-world", "xyz-123")
 			resp.Header().Set("Transfer-Encoding", "chunked")
 		})
-	})
+	}))
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -288,14 +289,14 @@ func TestServer_ChunkedTransferEncodingResponse(t *testing.T) {
 // Test content encoding
 
 func TestServer_GzipEncoding(t *testing.T) {
-	server := DefaultServer(func(ctx context.Context, request Request) Response {
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
 		if request.Header().Get("X-Hello-World") != "xyz-123" ||
 			request.Header().Get("Accept-Encoding") != specs.ContentEncodingGzip {
 			t.Errorf("not found expected headers, %+v", request.Header())
 		}
 
-		return NewTextResponse("okay encoded", specs.ContentTypePlain, specs.StatusCodeOK)
-	})
+		return TextResponse("okay encoded", specs.ContentTypePlain, specs.StatusCodeOK)
+	}))
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -355,14 +356,14 @@ func TestServer_GzipEncoding(t *testing.T) {
 }
 
 func TestServer_DeflateEncoding(t *testing.T) {
-	server := DefaultServer(func(ctx context.Context, request Request) Response {
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
 		if request.Header().Get("X-Hello-World") != "xyz-123" ||
 			request.Header().Get("Accept-Encoding") != specs.ContentEncodingDeflate {
 			t.Errorf("not found expected headers, %+v", request.Header())
 		}
 
-		return NewTextResponse("okay encoded", specs.ContentTypePlain, specs.StatusCodeOK)
-	})
+		return TextResponse("okay encoded", specs.ContentTypePlain, specs.StatusCodeOK)
+	}))
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -415,14 +416,14 @@ func TestServer_DeflateEncoding(t *testing.T) {
 }
 
 func TestServer_BrotliEncoding(t *testing.T) {
-	server := DefaultServer(func(ctx context.Context, request Request) Response {
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
 		if request.Header().Get("X-Hello-World") != "xyz-123" ||
 			request.Header().Get("Accept-Encoding") != specs.ContentEncodingBrotli {
 			t.Errorf("not found expected headers, %+v", request.Header())
 		}
 
-		return NewTextResponse("okay encoded", specs.ContentTypePlain, specs.StatusCodeOK)
-	})
+		return TextResponse("okay encoded", specs.ContentTypePlain, specs.StatusCodeOK)
+	}))
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -477,16 +478,16 @@ func TestServer_BrotliEncoding(t *testing.T) {
 // Test combined encoding and chunked transfer
 
 func TestServer_GzipEncodingAndChunkedTransferEncoding(t *testing.T) {
-	server := DefaultServer(func(ctx context.Context, request Request) Response {
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
 		if request.Header().Get("X-Hello-World") != "xyz-123" ||
 			request.Header().Get("Accept-Encoding") != specs.ContentEncodingGzip {
 			t.Errorf("not found expected headers, %+v", request.Header())
 		}
 
-		return NewTextResponse("response encoded", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+		return TextResponse("response encoded", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
 			resp.Header().Set("Transfer-Encoding", "chunked")
 		})
-	})
+	}))
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -539,16 +540,16 @@ func TestServer_GzipEncodingAndChunkedTransferEncoding(t *testing.T) {
 }
 
 func TestServer_DeflateEncodingAndChunkedTransferEncoding(t *testing.T) {
-	server := DefaultServer(func(ctx context.Context, request Request) Response {
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
 		if request.Header().Get("X-Hello-World") != "xyz-123" ||
 			request.Header().Get("Accept-Encoding") != specs.ContentEncodingDeflate {
 			t.Errorf("not found expected headers, %+v", request.Header())
 		}
 
-		return NewTextResponse("response encoded", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+		return TextResponse("response encoded", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
 			resp.Header().Set("Transfer-Encoding", "chunked")
 		})
-	})
+	}))
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -598,16 +599,16 @@ func TestServer_DeflateEncodingAndChunkedTransferEncoding(t *testing.T) {
 }
 
 func TestServer_BrotliEncodingAndChunkedTransferEncoding(t *testing.T) {
-	server := DefaultServer(func(ctx context.Context, request Request) Response {
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
 		if request.Header().Get("X-Hello-World") != "xyz-123" ||
 			request.Header().Get("Accept-Encoding") != specs.ContentEncodingBrotli {
 			t.Errorf("not found expected headers, %+v", request.Header())
 		}
 
-		return NewTextResponse("response encoded", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+		return TextResponse("response encoded", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
 			resp.Header().Set("Transfer-Encoding", "chunked")
 		})
-	})
+	}))
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -657,15 +658,15 @@ func TestServer_BrotliEncodingAndChunkedTransferEncoding(t *testing.T) {
 }
 
 func TestServer_GzipEncodingAndChunkedTransferEncoding_ByHttpTestClient(t *testing.T) {
-	server := DefaultServer(func(ctx context.Context, request Request) Response {
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
 		if request.Header().Get("Accept-Encoding") != specs.ContentEncodingGzip {
 			t.Errorf("not found expected headers, %+v", request.Header())
 		}
 
-		return NewTextResponse("response encoded", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+		return TextResponse("response encoded", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
 			resp.Header().Set("Transfer-Encoding", "chunked")
 		})
-	})
+	}))
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -699,7 +700,7 @@ func TestServer_Hijack(t *testing.T) {
 	requestBody := []byte(`{"key": "value"}`)
 	responseBody := []byte(`response okay`)
 
-	server := DefaultServer(func(ctx context.Context, request Request) Response {
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
 		if request.Header().Get("X-Hello-World") != "xyz-123" ||
 			request.Header().Get("Content-Length") != strconv.Itoa(len(requestBody)) {
 			t.Error("not found expected headers")
@@ -723,10 +724,10 @@ func TestServer_Hijack(t *testing.T) {
 			conn.Write([]byte("pong"))
 		})
 
-		return NewBufferResponse(responseBody, specs.ContentTypeRaw, specs.StatusCodeOK, func(resp Response) {
+		return BufferResponse(responseBody, specs.ContentTypeRaw, specs.StatusCodeOK, func(resp Response) {
 			resp.Header().Set("x-hello-world", "321-xyz")
 		})
-	})
+	}))
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -791,9 +792,9 @@ func TestServer_Hijack(t *testing.T) {
 
 func TestServer_FilterConn(t *testing.T) {
 	var wasChecked bool
-	server := DefaultServer(func(ctx context.Context, request Request) Response {
-		return NewTextResponse("okay", specs.ContentTypePlain, specs.StatusCodeOK)
-	})
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
+		return TextResponse("okay", specs.ContentTypePlain, specs.StatusCodeOK)
+	}))
 	server.FilterConn = func(addr net.Addr) bool {
 		wasChecked = true
 		return false
@@ -807,7 +808,7 @@ func TestServer_FilterConn(t *testing.T) {
 
 	url := specs.MustParseUrl(listener.Addr().String())
 
-	address := url.Host + ":" + strconv.FormatUint(uint64(url.Port), 10)
+	address := client.HostPort(url.Host, url.Port)
 
 	conn, err := defaultDialer.Dial("tcp", address)
 	if err != nil {
@@ -827,11 +828,11 @@ func TestServer_FilterConn(t *testing.T) {
 // Test TLS
 
 func TestServer_GetRequestTLS(t *testing.T) {
-	server := DefaultServer(func(ctx context.Context, request Request) Response {
-		return NewTextResponse("okay", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
+		return TextResponse("okay", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
 			resp.Header().Set("x-hello-world", "xyz-123")
 		})
-	})
+	}))
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -863,7 +864,7 @@ func TestServer_GetRequestTLS(t *testing.T) {
 func TestServer_PostRequestTLS(t *testing.T) {
 	requestBody := []byte(`{"key": "value"}`)
 
-	server := DefaultServer(func(ctx context.Context, request Request) Response {
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
 		if request.Header().Get("X-Hello-World") != "xyz-123" ||
 			request.Header().Get("Content-Length") != strconv.Itoa(len(requestBody)) {
 			t.Error("not found expected headers")
@@ -874,10 +875,10 @@ func TestServer_PostRequestTLS(t *testing.T) {
 			t.Errorf("expected %s, got %s", string(requestBody), string(b))
 		}
 
-		return NewTextResponse("okay", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+		return TextResponse("okay", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
 			resp.Header().Set("x-hello-world", "321-xyz")
 		})
-	})
+	}))
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {

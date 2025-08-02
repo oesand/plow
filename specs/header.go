@@ -4,6 +4,7 @@ import (
 	"github.com/oesand/giglet/internal"
 	"github.com/oesand/giglet/internal/plain"
 	"iter"
+	"maps"
 )
 
 func NewHeader(configure ...func(header *Header)) *Header {
@@ -17,10 +18,15 @@ func NewHeader(configure ...func(header *Header)) *Header {
 }
 
 type Header struct {
-	_ internal.NoCopy
-
 	headers map[string]string
 	cookies map[string]*Cookie
+}
+
+func (header *Header) Clone() *Header {
+	return &Header{
+		headers: maps.Clone(header.headers),
+		cookies: maps.Clone(header.cookies),
+	}
 }
 
 func (header *Header) Any() bool {

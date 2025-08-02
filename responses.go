@@ -6,8 +6,8 @@ import (
 	"io"
 )
 
-func NewEmptyResponse(statusCode specs.StatusCode, configure ...func(Response)) Response {
-	resp := newEmptyResponse(statusCode)
+func EmptyResponse(statusCode specs.StatusCode, configure ...func(Response)) Response {
+	resp := newResponse(statusCode)
 
 	for _, conf := range configure {
 		conf(resp)
@@ -16,7 +16,7 @@ func NewEmptyResponse(statusCode specs.StatusCode, configure ...func(Response)) 
 	return resp
 }
 
-func newEmptyResponse(statusCode specs.StatusCode) *HeaderResponse {
+func newResponse(statusCode specs.StatusCode) *HeaderResponse {
 	if statusCode == specs.StatusCodeUndefined {
 		statusCode = specs.StatusCodeOK
 	}
@@ -26,14 +26,14 @@ func newEmptyResponse(statusCode specs.StatusCode) *HeaderResponse {
 	}
 }
 
-func NewRedirectResponse(url string, configure ...func(Response)) Response {
-	resp := NewEmptyResponse(specs.StatusCodeTemporaryRedirect, configure...)
+func RedirectResponse(url string, configure ...func(Response)) Response {
+	resp := EmptyResponse(specs.StatusCodeTemporaryRedirect, configure...)
 	resp.Header().Set("Location", url)
 	return resp
 }
 
-func NewPermanentRedirectResponse(url string, configure ...func(Response)) Response {
-	resp := NewEmptyResponse(specs.StatusCodePermanentRedirect, configure...)
+func PermanentRedirectResponse(url string, configure ...func(Response)) Response {
+	resp := EmptyResponse(specs.StatusCodePermanentRedirect, configure...)
 	resp.Header().Set("Location", url)
 	return resp
 }
@@ -59,16 +59,16 @@ func (resp *HeaderResponse) Header() *specs.Header {
 	return resp.header
 }
 
-func NewTextResponse(text string, contentType string, statusCode specs.StatusCode, configure ...func(Response)) Response {
+func TextResponse(text string, contentType string, statusCode specs.StatusCode, configure ...func(Response)) Response {
 	if contentType == specs.ContentTypeUndefined {
 		contentType = specs.ContentTypePlain
 	}
-	return NewBufferResponse([]byte(text), contentType, statusCode, configure...)
+	return BufferResponse([]byte(text), contentType, statusCode, configure...)
 }
 
-func NewBufferResponse(buffer []byte, contentType string, statusCode specs.StatusCode, configure ...func(Response)) Response {
+func BufferResponse(buffer []byte, contentType string, statusCode specs.StatusCode, configure ...func(Response)) Response {
 	resp := &bufferResponse{
-		HeaderResponse: *newEmptyResponse(statusCode),
+		HeaderResponse: *newResponse(statusCode),
 		buffer:         buffer,
 		contentLength:  int64(len(buffer)),
 	}
@@ -100,7 +100,7 @@ func (resp *bufferResponse) ContentLength() int64 {
 	return resp.contentLength
 }
 
-func NewStreamResponse(stream io.Reader, contentType string, contentLength int64, statusCode specs.StatusCode, configure ...func(Response)) Response {
+func StreamResponse(stream io.Reader, contentType string, contentLength int64, statusCode specs.StatusCode, configure ...func(Response)) Response {
 	if stream == nil {
 		panic("giglet/response: passed nil stream")
 	}
@@ -109,7 +109,7 @@ func NewStreamResponse(stream io.Reader, contentType string, contentLength int64
 	}
 
 	resp := &streamResponse{
-		HeaderResponse: *newEmptyResponse(statusCode),
+		HeaderResponse: *newResponse(statusCode),
 		stream:         stream,
 		contentLength:  contentLength,
 	}

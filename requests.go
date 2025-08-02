@@ -4,10 +4,9 @@ import (
 	"github.com/oesand/giglet/internal"
 	"github.com/oesand/giglet/specs"
 	"io"
-	"net"
 )
 
-func NewRequest(method specs.HttpMethod, url *specs.Url) ClientRequest {
+func EmptyRequest(method specs.HttpMethod, url *specs.Url) ClientRequest {
 	return newRequest(method, url)
 }
 
@@ -45,14 +44,14 @@ func (req *clientRequest) Header() *specs.Header {
 	return req.header
 }
 
-func NewTextRequest(method specs.HttpMethod, url *specs.Url, text string, contentType string) ClientRequest {
+func TextRequest(method specs.HttpMethod, url *specs.Url, text string, contentType string) ClientRequest {
 	if contentType == specs.ContentTypeUndefined {
 		contentType = specs.ContentTypePlain
 	}
-	return NewBufferRequest(method, url, []byte(text), contentType)
+	return BufferRequest(method, url, []byte(text), contentType)
 }
 
-func NewBufferRequest(method specs.HttpMethod, url *specs.Url, buffer []byte, contentType string) ClientRequest {
+func BufferRequest(method specs.HttpMethod, url *specs.Url, buffer []byte, contentType string) ClientRequest {
 	if method == "" {
 		method = specs.HttpMethodPost
 	}
@@ -86,7 +85,7 @@ func (req *bufferRequest) ContentLength() int64 {
 	return req.contentLength
 }
 
-func NewStreamRequest(method specs.HttpMethod, url *specs.Url, stream io.Reader, contentType string, contentLength int64) ClientRequest {
+func StreamRequest(method specs.HttpMethod, url *specs.Url, stream io.Reader, contentType string, contentLength int64) ClientRequest {
 	if method == "" {
 		method = specs.HttpMethodPost
 	}
@@ -121,23 +120,4 @@ func (req *streamRequest) WriteBody(w io.Writer) error {
 
 func (req *streamRequest) ContentLength() int64 {
 	return req.contentLength
-}
-
-func NewHijackRequest(method specs.HttpMethod, url *specs.Url) HijackRequest {
-	return &hijackRequest{
-		clientRequest: *newRequest(method, url),
-	}
-}
-
-type hijackRequest struct {
-	clientRequest
-	conn net.Conn
-}
-
-func (req *hijackRequest) Hijack(conn net.Conn) {
-	req.conn = conn
-}
-
-func (req *hijackRequest) Conn() net.Conn {
-	return req.conn
 }

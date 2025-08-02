@@ -125,6 +125,15 @@ func TestParseUrl(t *testing.T) {
 			},
 		},
 		{
+			name: "HTTPS with slash path",
+			raw:  "https://example.com/",
+			want: &Url{
+				Scheme: "https",
+				Host:   "example.com",
+				Path:   "/",
+			},
+		},
+		{
 			name: "HTTPS with path and hash",
 			raw:  "https://example.com/path#section",
 			want: &Url{

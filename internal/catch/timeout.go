@@ -11,12 +11,11 @@ type ResultErrPair[T any] struct {
 }
 
 func CallWithTimeoutContext[TR any](ctx context.Context, timeout time.Duration, fn func(context.Context) (TR, error)) (TR, error) {
-	if timeout <= 0 {
-		return fn(ctx)
+	if timeout > 0 {
+		var cancelTimeout context.CancelFunc
+		ctx, cancelTimeout = context.WithTimeout(ctx, timeout)
+		defer cancelTimeout()
 	}
-
-	ctx, cancelTimeout := context.WithTimeout(ctx, timeout)
-	defer cancelTimeout()
 
 	resc := make(chan ResultErrPair[TR], 1)
 
@@ -35,12 +34,11 @@ func CallWithTimeoutContext[TR any](ctx context.Context, timeout time.Duration, 
 }
 
 func CallWithTimeoutContextErr(ctx context.Context, timeout time.Duration, fn func(context.Context) error) error {
-	if timeout <= 0 {
-		return fn(ctx)
+	if timeout > 0 {
+		var cancelTimeout context.CancelFunc
+		ctx, cancelTimeout = context.WithTimeout(ctx, timeout)
+		defer cancelTimeout()
 	}
-
-	ctx, cancelTimeout := context.WithTimeout(ctx, timeout)
-	defer cancelTimeout()
 
 	errch := make(chan error, 1)
 

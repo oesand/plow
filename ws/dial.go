@@ -57,7 +57,7 @@ func dial(ctx context.Context, client *giglet.Client, url *specs.Url, conf *Dial
 	httpUrl := *url
 	httpUrl.Scheme = httpScheme
 
-	req := giglet.NewHijackRequest(specs.HttpMethodGet, &httpUrl)
+	req := giglet.HijackRequest(specs.HttpMethodGet, &httpUrl)
 
 	req.Header().Set("Connection", "Upgrade")
 	req.Header().Set("Upgrade", "websocket")

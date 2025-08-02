@@ -93,7 +93,7 @@ func TestWriteRequestHead(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			writer := &bytes.Buffer{}
-			_, _ = WriteRequestHead(writer, tt.method, tt.url, tt.header)
+			_, _ = WriteRequestHead(writer, tt.method, tt.url.Path, tt.url.Query, tt.header)
 			if gotText := writer.String(); tt.expected != gotText {
 				t.Errorf("WriteRequestHead() got plain = \n%v\nexpected:\n%v", gotText, tt.expected)
 			}
