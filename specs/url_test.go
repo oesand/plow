@@ -12,39 +12,113 @@ func TestParseUrl(t *testing.T) {
 		want    *Url
 		invalid bool
 	}{
-		// Empty parts
+		// Invalid url
 		{
-			name:    "Empty string",
-			raw:     "",
-			want:    &Url{},
-			invalid: false,
+			name:    "Only username mark",
+			raw:     "@",
+			invalid: true,
 		},
 		{
-			name:    "Empty scheme",
+			name:    "Only scheme mark",
 			raw:     "://",
 			invalid: true,
 		},
 		{
-			name:    "Empty host",
+			name:    "Scheme & path with empty host",
 			raw:     "http:///path",
 			invalid: true,
 		},
 		{
-			name:    "Has scheme & empty host",
+			name:    "Only scheme",
 			raw:     "http://",
+			invalid: true,
+		},
+		{
+			name:    "Only port",
+			raw:     ":80",
+			invalid: true,
+		},
+		{
+			name:    "Empty port",
+			raw:     "host:",
+			invalid: true,
+		},
+		{
+			name:    "Only username",
+			raw:     "username@",
+			invalid: true,
+		},
+		{
+			name:    "Empty username with host",
+			raw:     "@host",
+			invalid: true,
+		},
+		{
+			name:    "Empty username with host & port",
+			raw:     "@host:80",
+			invalid: true,
+		},
+		{
+			name:    "Username & password only",
+			raw:     "username:password@",
+			invalid: true,
+		},
+		{
+			name:    "Empty username with password only",
+			raw:     ":password@",
+			invalid: true,
+		},
+		{
+			name:    "Empty username with password & host",
+			raw:     ":password@host",
+			invalid: true,
+		},
+		{
+			name:    "Empty username with password & host & port",
+			raw:     ":password@host:80",
+			invalid: true,
+		},
+		{
+			name:    "IPv6 without leading bracket",
+			raw:     "2001:db8::1]",
+			invalid: true,
+		},
+		{
+			name:    "IPv6 without ending bracket",
+			raw:     "[2001:db8::1",
+			invalid: true,
+		},
+		{
+			name:    "IPv6 without port",
+			raw:     "[2001:db8::1]:",
 			invalid: true,
 		},
 
 		// Single parts
 		{
+			name: "Empty string",
+			raw:  "",
+			want: &Url{},
+		},
+		{
 			name: "Only host",
-			raw:  "h",
-			want: &Url{Host: "h"},
+			raw:  "host",
+			want: &Url{Host: "host"},
 		},
 		{
 			name: "Only path",
 			raw:  "/path",
 			want: &Url{Path: "/path"},
+		},
+		{
+			name: "Only fragment",
+			raw:  "#fragment",
+			want: &Url{Fragment: "fragment"},
+		},
+		{
+			name: "Only query",
+			raw:  "?key=value",
+			want: &Url{Query: Query{"key": "value"}},
 		},
 
 		// Combined parts
@@ -54,6 +128,95 @@ func TestParseUrl(t *testing.T) {
 			want: &Url{
 				Scheme: "http",
 				Host:   "example.com",
+			},
+		},
+		{
+			name: "Basic HTTP with slash path",
+			raw:  "http://example.com/",
+			want: &Url{
+				Scheme: "http",
+				Host:   "example.com",
+				Path:   "/",
+			},
+		},
+		{
+			name: "Basic HTTP with query mark",
+			raw:  "http://example.com?",
+			want: &Url{
+				Scheme: "http",
+				Host:   "example.com",
+			},
+		},
+		{
+			name: "Basic HTTP with slash path and query mark",
+			raw:  "http://example.com/?",
+			want: &Url{
+				Scheme: "http",
+				Host:   "example.com",
+				Path:   "/",
+			},
+		},
+		{
+			name: "Host with slash path",
+			raw:  "example.com/",
+			want: &Url{
+				Host: "example.com",
+				Path: "/",
+			},
+		},
+		{
+			name: "Host with query mark",
+			raw:  "example.com?",
+			want: &Url{
+				Host: "example.com",
+			},
+		},
+		{
+			name: "Host with slash path and query mark",
+			raw:  "example.com/?",
+			want: &Url{
+				Host: "example.com",
+				Path: "/",
+			},
+		},
+		{
+			name: "Host & port with slash path",
+			raw:  "example.com:80/",
+			want: &Url{
+				Host: "example.com",
+				Port: 80,
+				Path: "/",
+			},
+		},
+		{
+			name: "Host & port with query mark",
+			raw:  "example.com:80?",
+			want: &Url{
+				Host: "example.com",
+				Port: 80,
+			},
+		},
+		{
+			name: "Host & port with slash path and query mark",
+			raw:  "example.com:80/?",
+			want: &Url{
+				Host: "example.com",
+				Port: 80,
+				Path: "/",
+			},
+		},
+		{
+			name: "Path and query mark",
+			raw:  "/path?",
+			want: &Url{
+				Path: "/path",
+			},
+		},
+		{
+			name: "Path slash and query mark",
+			raw:  "/?",
+			want: &Url{
+				Path: "/",
 			},
 		},
 		{
@@ -134,24 +297,24 @@ func TestParseUrl(t *testing.T) {
 			},
 		},
 		{
-			name: "HTTPS with path and hash",
+			name: "HTTPS with path and fragment",
 			raw:  "https://example.com/path#section",
 			want: &Url{
-				Scheme: "https",
-				Host:   "example.com",
-				Path:   "/path",
-				Hash:   "section",
+				Scheme:   "https",
+				Host:     "example.com",
+				Path:     "/path",
+				Fragment: "section",
 			},
 		},
 		{
-			name: "HTTPS with port and path and hash",
+			name: "HTTPS with port and path and fragment",
 			raw:  "https://example.com:8090/path#section",
 			want: &Url{
-				Scheme: "https",
-				Host:   "example.com",
-				Port:   8090,
-				Path:   "/path",
-				Hash:   "section",
+				Scheme:   "https",
+				Host:     "example.com",
+				Port:     8090,
+				Path:     "/path",
+				Fragment: "section",
 			},
 		},
 		{
@@ -220,7 +383,7 @@ func TestParseUrl(t *testing.T) {
 				Host:     "my.example.com",
 				Port:     8443,
 				Path:     "/api/v1",
-				Hash:     "anchor",
+				Fragment: "anchor",
 				Query:    Query{"key": "value"},
 			},
 		},
@@ -230,12 +393,12 @@ func TestParseUrl(t *testing.T) {
 			got, err := ParseUrl(tt.raw)
 			if tt.invalid {
 				if err == nil {
-					t.Errorf("ParseUrl() expected has error, got = %v", got)
+					t.Errorf("ParseUrl() expected has error, got = %+v", got)
 				}
 			} else if err != nil {
-				t.Errorf("ParseUrl() expected has not error, got = %v", err)
+				t.Errorf("ParseUrl() expected has not error, got = %s", err)
 			} else if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ParseUrl() got = %v, want %v", got, tt.want)
+				t.Errorf("ParseUrl() got = %+v, want %+v", got, tt.want)
 			}
 		})
 	}
@@ -250,7 +413,7 @@ func TestUrl_String(t *testing.T) {
 		host     string
 		path     string
 		query    Query
-		hash     string
+		fragment string
 		port     uint16
 		want     string
 	}{
@@ -282,7 +445,7 @@ func TestUrl_String(t *testing.T) {
 			host:     "example.com",
 			path:     "/search results",
 			query:    Query{"q": "golang & rust", "lang": "en"},
-			hash:     "section 1",
+			fragment: "section 1",
 			port:     8443,
 			want:     "https://user:pass@example.com:8443/search%20results?lang=en&q=golang+%26+rust#section%201",
 		},
@@ -319,7 +482,7 @@ func TestUrl_String(t *testing.T) {
 				Host:     tt.host,
 				Path:     tt.path,
 				Query:    tt.query,
-				Hash:     tt.hash,
+				Fragment: tt.fragment,
 				Port:     tt.port,
 			}
 			if got := url.String(); got != tt.want {

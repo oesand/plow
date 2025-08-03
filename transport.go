@@ -154,7 +154,6 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 			proxyUrl.Scheme = url.Scheme
 		}
 
-		fmt.Printf("Transport Host: %s %s \n", host, url.Host)
 		switch proxyUrl.Scheme {
 		case "http":
 			header.Set("Host", client.HostPort(host, url.Port))

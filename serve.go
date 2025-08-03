@@ -255,8 +255,8 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 		}
 
 		var encodedContent []byte
-		shouldResponseBody := req.Method().IsReplyable() && code.IsReplyable() && writable != nil
-		if shouldResponseBody {
+		mustResponseBody := req.Method().IsReplyable() && code.IsReplyable() && writable != nil
+		if mustResponseBody {
 			if req.Chunked {
 				header.Set("Transfer-Encoding", "chunked")
 			} else if header.Get("Transfer-Encoding") == "chunked" {
@@ -310,7 +310,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 			if len(encodedContent) > 0 {
 				_, err = conn.Write(encodedContent)
 			}
-		} else if shouldResponseBody {
+		} else if mustResponseBody {
 			err = srv.writeBody(writable, conn, req.Chunked, req.SelectedEncoding)
 		}
 

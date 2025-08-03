@@ -29,6 +29,8 @@ func (e InvalidHostError) Error() string {
 	return "invalid character " + strconv.Quote(string(e)) + " in host name"
 }
 
+// EscapeUrl escapes the string so it can be safely placed inside a specs.Url segment,
+// Based on https://github.com/golang/go/blob/4ab1aec00799f91e96182cbbffd1de405cd52e93/src/net/url/url.go#L290
 func EscapeUrl(s string, mode EscapingMode) string {
 	spaceCount, hexCount := 0, 0
 	for i := 0; i < len(s); i++ {
@@ -161,7 +163,12 @@ func shouldEscape(c byte, mode EscapingMode) bool {
 	return true
 }
 
+// UnEscapeUrl escapes the string so it can be safely placed inside a specs.Url segment,
+// Based on https://github.com/golang/go/blob/4ab1aec00799f91e96182cbbffd1de405cd52e93/src/net/url/url.go#L205
 func UnEscapeUrl(s string, mode EscapingMode) (string, error) {
+	if s == "" {
+		return s, nil
+	}
 	// Count %, check that they're well-formed.
 	n := 0
 	hasPlus := false

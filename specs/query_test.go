@@ -36,7 +36,7 @@ func TestParseQuery(t *testing.T) {
 		{
 			name:     "Empty query string",
 			query:    "",
-			expected: Query{},
+			expected: nil,
 		},
 		{
 			name:  "Key without value",

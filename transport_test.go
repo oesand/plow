@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"net/http/httputil"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -583,7 +584,7 @@ func TestTransport_Sock5ProxyAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var connectedProxy bool
+	var connectedProxy atomic.Bool
 
 	go func() {
 		var conn net.Conn
@@ -599,7 +600,7 @@ func TestTransport_Sock5ProxyAuth(t *testing.T) {
 			}
 			break
 		}
-		connectedProxy = true
+		connectedProxy.Store(true)
 		if err := proxyServer.ServeConn(conn); err != nil {
 			t.Error(err)
 		}
@@ -623,20 +624,20 @@ func TestTransport_Sock5ProxyAuth(t *testing.T) {
 
 	checkResponseBody(t, resp, testContent)
 
-	if !connectedProxy {
+	if !connectedProxy.Load() {
 		t.Fatal("not was connected to proxy server")
 	}
 }
 
 func TestTransport_HttpProxy(t *testing.T) {
-	var connectedProxy bool
+	var connectedProxy atomic.Bool
 	testContent := []byte("Content\nEncoding 1234567890")
 	closeServer, proxyUrl := newTestServer(func(req Request) (specs.StatusCode, *specs.Header, []byte) {
 		if req.Header().Get("X-ping") != "xyz-123" ||
-			req.Header().Get("Host") != "test.org" {
+			req.Header().Get("Host") != "test.org:80" {
 			t.Errorf("not found expected headers, %+v", req.Header())
 		}
-		connectedProxy = true
+		connectedProxy.Store(true)
 
 		header := specs.NewHeader()
 		header.Set("Content-Length", strconv.Itoa(len(testContent)))
@@ -665,7 +666,53 @@ func TestTransport_HttpProxy(t *testing.T) {
 
 	checkResponseBody(t, resp, testContent)
 
-	if !connectedProxy {
+	if !connectedProxy.Load() {
+		t.Fatal("not was connected to proxy server")
+	}
+}
+
+func TestTransport_HttpProxyAuth(t *testing.T) {
+	var connectedProxy atomic.Bool
+	testContent := []byte("Content\nEncoding 1234567890")
+	closeServer, proxyUrl := newTestServer(func(req Request) (specs.StatusCode, *specs.Header, []byte) {
+		if req.Header().Get("X-ping") != "xyz-123" ||
+			req.Header().Get("Proxy-Authorization") != specs.BasicAuthHeader("username", "password") ||
+			req.Header().Get("Host") != "test.org:80" {
+			t.Errorf("not found expected headers, %+v", req.Header())
+		}
+		connectedProxy.Store(true)
+
+		header := specs.NewHeader()
+		header.Set("Content-Length", strconv.Itoa(len(testContent)))
+		header.Set("x-pong", "xyz-321")
+
+		return specs.StatusCodeOK, header, testContent
+	})
+	defer closeServer()
+
+	header := specs.NewHeader()
+	header.Set("x-ping", "xyz-123")
+
+	proxyUrl.Username = "username"
+	proxyUrl.Password = "password"
+
+	transport := DefaultTransport()
+	transport.Proxy = FixedProxyUrl(proxyUrl)
+
+	url := specs.MustParseUrl("http://test.org/")
+	resp, err := transport.RoundTrip(context.Background(), specs.HttpMethodGet, *url, header, nil)
+
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	if resp.Header().Get("X-Pong") != "xyz-321" {
+		t.Errorf("not found expected headers, %+v", resp.Header())
+	}
+
+	checkResponseBody(t, resp, testContent)
+
+	if !connectedProxy.Load() {
 		t.Fatal("not was connected to proxy server")
 	}
 }

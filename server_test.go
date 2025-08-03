@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"strconv"
+	"sync/atomic"
 	"testing"
 )
 
@@ -791,12 +792,12 @@ func TestServer_Hijack(t *testing.T) {
 }
 
 func TestServer_FilterConn(t *testing.T) {
-	var wasChecked bool
+	var wasChecked atomic.Bool
 	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
 		return TextResponse("okay", specs.ContentTypePlain, specs.StatusCodeOK)
 	}))
 	server.FilterConn = func(addr net.Addr) bool {
-		wasChecked = true
+		wasChecked.Store(true)
 		return false
 	}
 
@@ -820,7 +821,7 @@ func TestServer_FilterConn(t *testing.T) {
 		t.Error("conn not closed, err:", err)
 	}
 
-	if !wasChecked {
+	if !wasChecked.Load() {
 		t.Fatal("FilterConn not was triggered")
 	}
 }
