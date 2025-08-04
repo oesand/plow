@@ -19,6 +19,10 @@ import (
 	"time"
 )
 
+// DefaultTransport factory for creating [Transport]
+// with optimal parameters for perfomance and safety
+//
+// Each call creates a new instance of [Transport]
 func DefaultTransport() *Transport {
 	return &Transport{
 		ReadLineMaxLength:   1024,
@@ -31,6 +35,11 @@ func DefaultTransport() *Transport {
 	}
 }
 
+// Transport is an implementation of [RoundTripper] that supports HTTP,
+// HTTPS, and proxies like 'http', 'https', 'socks5' 'socks5h' (can be provided by Proxy).
+//
+// Transport is a low-level primitive for making HTTP and HTTPS requests.
+// For high-level functionality, such as cookies and redirects, see [Client].
 type Transport struct {
 	_ internal.NoCopy
 
@@ -47,21 +56,23 @@ type Transport struct {
 	// "http" is assumed.
 	// "socks5" is treated the same as "socks5h".
 	//
-	// If the proxy specs.Url contains a userinfo subcomponent,
+	// If the proxy specs.Url contains a username & password subcomponents,
 	// the proxy request will pass the username and password
-	// in a Proxy-Authorization header.
+	// in a `Proxy-Authorization` header.
 	//
 	// If Proxy is nil or returns a nil *specs.Url, no proxy is used.
 	Proxy func(url *specs.Url) (*specs.Url, error)
 
 	// ProxyDialTimeout specifies the maximum amount of time to
-	// wait for a Proxy establish connection. Zero means no timeout.
+	// wait for a Proxy establish connection.
+	//
+	// If zero there is no timeout.
 	ProxyDialTimeout time.Duration
 
 	// TLSDialer specifies an optional dial function for creating
 	// TLS connections and gone handshake for non-proxied HTTPS requests.
 	//
-	// If TLSDialer is nil will be used tls.Client.
+	// If TLSDialer is nil will be used [tls.Client].
 	//
 	// If TLSDialer is set, it is assumed
 	// that the returned net.Conn has already gone through the TLS handshake.
@@ -69,6 +80,7 @@ type Transport struct {
 
 	// TLSClientConfig specifies the TLS configuration
 	// to use with tls.Client.
+	//
 	// If nil, the default configuration is used.
 	// If non-nil, HTTP/2 support may not be enabled by default.
 	TLSConfig *tls.Config
@@ -80,11 +92,19 @@ type Transport struct {
 	// ReadLineMaxLength maximum size in bytes
 	// to read lines in the response
 	// such as headers and headlines
+	//
+	// The client returns specs.ErrTooLarge if this limit is greater than 0
+	// and response lines is greater than the limit.
+	//
 	// If zero there is no limit
 	ReadLineMaxLength int64
 
 	// HeadMaxLength maximum size in bytes
 	// to read headline and headers together
+	//
+	// The client returns specs.ErrTooLarge if this limit is greater than 0
+	// and response header size is greater than the limit.
+	//
 	// If zero there is no limit
 	HeadMaxLength int64
 
@@ -108,7 +128,7 @@ type Transport struct {
 	WriteTimeout time.Duration
 }
 
-//goland:noinspection GoUnhandledErrorResult
+// RoundTrip implements the [RoundTripper] interface.
 func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMethod, url specs.Url, header *specs.Header, writer BodyWriter) (ClientResponse, error) {
 	if ctx == nil {
 		panic("nil context pointer")
@@ -156,12 +176,12 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 
 		switch proxyUrl.Scheme {
 		case "http":
-			header.Set("Host", client.HostPort(host, url.Port))
+			header.Set("Host", client.HostHeader(host, url.Port, true))
 			if proxyUrl.Username != "" {
 				proxy.WithAuthHeader(header, proxyUrl.Username, proxyUrl.Password)
 			}
 		case "https", "socks5", "socks5h":
-			header.Set("Host", host)
+			header.Set("Host", client.HostHeader(host, url.Port, false))
 		default:
 			return nil, fmt.Errorf("unsupported proxy '%s' scheme", url.Scheme)
 		}
@@ -171,7 +191,7 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 			proxyUrl.Port = proxy.SchemeDefaultPortMap[proxyUrl.Scheme]
 		}
 	} else {
-		header.Set("Host", host)
+		header.Set("Host", client.HostHeader(host, url.Port, false))
 	}
 
 	if !header.Has("Accept") {
@@ -185,7 +205,7 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 	}
 
 	if url.Username != "" && !header.Has("Authorization") {
-		specs.WithBasicAuthHeader(header, url.Username, url.Password)
+		header.Set("Authorization", specs.BasicAuthHeader(url.Username, url.Password))
 	}
 
 	if !header.Has("Connection") {

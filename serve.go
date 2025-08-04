@@ -18,6 +18,14 @@ import (
 	"time"
 )
 
+// Serve accepts incoming connections on the [net.Listener], creating a
+// new service goroutine for each. The service goroutines read requests and
+// then call [Server.Handler] to reply to them.
+//
+// HTTP/2 not supported
+//
+// Serve always returns a non-nil error.
+// After [Server.Shutdown], the returned error is [specs.ErrClosed].
 func (srv *Server) Serve(listener net.Listener) error {
 	if listener == nil {
 		panic("nil listener")
@@ -77,7 +85,6 @@ func (srv *Server) Serve(listener net.Listener) error {
 	}
 
 	cancelCtx()
-	listener.Close()
 	connTrack.Wait()
 
 	return err
@@ -126,9 +133,10 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 
 		proto := tlsConn.ConnectionState().NegotiatedProtocol
 
-		if srv.nextProtos != nil {
-			if handler, ok := srv.nextProtos[proto]; ok {
+		if srv.tlsNextProtos != nil {
+			if handler, ok := srv.tlsNextProtos[proto]; ok {
 				handler(tlsConn)
+				conn.Close()
 				return
 			}
 		}
@@ -146,15 +154,13 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 	defer cancel()
 
 	for {
-		headerReader := stream.DefaultBufioReaderPool.Get(conn)
-
 		if srv.ReadTimeout > 0 {
 			conn.SetReadDeadline(time.Now().Add(srv.ReadTimeout))
 		}
-		req, err := server.ReadRequest(ctx, conn.RemoteAddr(), headerReader, srv.ReadLineMaxLength, srv.HeadMaxLength)
+
+		req, extraBuffered, err := srv.readHeader(ctx, conn)
 
 		if err != nil {
-			stream.DefaultBufioReaderPool.Put(headerReader)
 			if srv.Debug {
 				srv.logger().Printf("giglet: read request error from '%s': %v", conn.RemoteAddr(), err)
 			}
@@ -170,12 +176,10 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 		}
 
 		if srv.catchCancelled(ctx) {
-			stream.DefaultBufioReaderPool.Put(headerReader)
 			break
 		}
 
 		if req.Method().IsPostable() {
-			extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
 			reader := io.MultiReader(bytes.NewReader(extraBuffered), conn)
 
 			if req.Chunked {
@@ -210,8 +214,6 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 
 			req.BodyReader = reader
 		}
-
-		stream.DefaultBufioReaderPool.Put(headerReader)
 
 		if srv.catchCancelled(ctx) {
 			break
@@ -338,6 +340,20 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 
 func (srv *Server) catchCancelled(ctx context.Context) bool {
 	return ctx.Err() != nil
+}
+
+func (srv *Server) readHeader(ctx context.Context, conn net.Conn) (*server.HttpRequest, []byte, error) {
+	headerReader := stream.DefaultBufioReaderPool.Get(conn)
+	defer stream.DefaultBufioReaderPool.Put(headerReader)
+
+	req, err := server.ReadRequest(ctx, conn.RemoteAddr(), headerReader, srv.ReadLineMaxLength, srv.HeadMaxLength)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
+	return req, extraBuffered, nil
 }
 
 func (srv *Server) writeBody(writable BodyWriter, writer io.Writer, chunked bool, contentEncoding string) error {

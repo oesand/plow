@@ -23,7 +23,7 @@ import (
 
 func TestServer_GetRequest(t *testing.T) {
 	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
-		return TextResponse("okay", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+		return TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "okay", func(resp Response) {
 			resp.Header().Set("x-hello-world", "xyz-123")
 		})
 	}))
@@ -65,7 +65,7 @@ func TestServer_PostRequest(t *testing.T) {
 			t.Errorf("expected %s, got %s", string(requestBody), string(b))
 		}
 
-		return TextResponse("okay", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+		return TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "okay", func(resp Response) {
 			resp.Header().Set("x-hello-world", "321-xyz")
 		})
 	}))
@@ -103,17 +103,17 @@ func TestServer_SendAnyResponse(t *testing.T) {
 	}{
 		{
 			name:     "TextResponse",
-			response: TextResponse("text response", specs.ContentTypePlain, specs.StatusCodeOK),
+			response: TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "text response"),
 			wantBody: []byte("text response"),
 		},
 		{
 			name:     "BufferResponse",
-			response: BufferResponse([]byte("buffer response"), specs.ContentTypePlain, specs.StatusCodeOK),
+			response: BufferResponse(specs.StatusCodeOK, specs.ContentTypePlain, []byte("buffer response")),
 			wantBody: []byte("buffer response"),
 		},
 		{
 			name:     "StreamResponse",
-			response: StreamResponse(bytes.NewReader([]byte("stream response")), specs.ContentTypePlain, 15, specs.StatusCodeOK),
+			response: StreamResponse(specs.StatusCodeOK, specs.ContentTypePlain, bytes.NewReader([]byte("stream response")), 15),
 			wantBody: []byte("stream response"),
 		},
 	}
@@ -171,7 +171,7 @@ func TestServer_ChunkedTransferEncodingTwoWays(t *testing.T) {
 			t.Error("invalid request:", string(data))
 		}
 
-		return TextResponse("response encoded", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+		return TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "response encoded", func(resp Response) {
 			resp.Header().Set("x-hello-world", "xyz-123")
 		})
 	}))
@@ -237,7 +237,7 @@ func TestServer_ChunkedTransferEncodingResponse(t *testing.T) {
 			t.Errorf("not found expected headers, %+v", request.Header())
 		}
 
-		return TextResponse("response encoded", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+		return TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "response encoded", func(resp Response) {
 			resp.Header().Set("x-hello-world", "xyz-123")
 			resp.Header().Set("Transfer-Encoding", "chunked")
 		})
@@ -296,7 +296,7 @@ func TestServer_GzipEncoding(t *testing.T) {
 			t.Errorf("not found expected headers, %+v", request.Header())
 		}
 
-		return TextResponse("okay encoded", specs.ContentTypePlain, specs.StatusCodeOK)
+		return TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "okay encoded")
 	}))
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
@@ -363,7 +363,7 @@ func TestServer_DeflateEncoding(t *testing.T) {
 			t.Errorf("not found expected headers, %+v", request.Header())
 		}
 
-		return TextResponse("okay encoded", specs.ContentTypePlain, specs.StatusCodeOK)
+		return TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "okay encoded")
 	}))
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
@@ -423,7 +423,7 @@ func TestServer_BrotliEncoding(t *testing.T) {
 			t.Errorf("not found expected headers, %+v", request.Header())
 		}
 
-		return TextResponse("okay encoded", specs.ContentTypePlain, specs.StatusCodeOK)
+		return TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "okay encoded")
 	}))
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
@@ -485,7 +485,7 @@ func TestServer_GzipEncodingAndChunkedTransferEncoding(t *testing.T) {
 			t.Errorf("not found expected headers, %+v", request.Header())
 		}
 
-		return TextResponse("response encoded", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+		return TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "response encoded", func(resp Response) {
 			resp.Header().Set("Transfer-Encoding", "chunked")
 		})
 	}))
@@ -547,7 +547,7 @@ func TestServer_DeflateEncodingAndChunkedTransferEncoding(t *testing.T) {
 			t.Errorf("not found expected headers, %+v", request.Header())
 		}
 
-		return TextResponse("response encoded", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+		return TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "response encoded", func(resp Response) {
 			resp.Header().Set("Transfer-Encoding", "chunked")
 		})
 	}))
@@ -606,7 +606,7 @@ func TestServer_BrotliEncodingAndChunkedTransferEncoding(t *testing.T) {
 			t.Errorf("not found expected headers, %+v", request.Header())
 		}
 
-		return TextResponse("response encoded", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+		return TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "response encoded", func(resp Response) {
 			resp.Header().Set("Transfer-Encoding", "chunked")
 		})
 	}))
@@ -664,7 +664,7 @@ func TestServer_GzipEncodingAndChunkedTransferEncoding_ByHttpTestClient(t *testi
 			t.Errorf("not found expected headers, %+v", request.Header())
 		}
 
-		return TextResponse("response encoded", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+		return TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "response encoded", func(resp Response) {
 			resp.Header().Set("Transfer-Encoding", "chunked")
 		})
 	}))
@@ -725,7 +725,7 @@ func TestServer_Hijack(t *testing.T) {
 			conn.Write([]byte("pong"))
 		})
 
-		return BufferResponse(responseBody, specs.ContentTypeRaw, specs.StatusCodeOK, func(resp Response) {
+		return BufferResponse(specs.StatusCodeOK, specs.ContentTypeRaw, responseBody, func(resp Response) {
 			resp.Header().Set("x-hello-world", "321-xyz")
 		})
 	}))
@@ -794,7 +794,7 @@ func TestServer_Hijack(t *testing.T) {
 func TestServer_FilterConn(t *testing.T) {
 	var wasChecked atomic.Bool
 	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
-		return TextResponse("okay", specs.ContentTypePlain, specs.StatusCodeOK)
+		return TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "okay")
 	}))
 	server.FilterConn = func(addr net.Addr) bool {
 		wasChecked.Store(true)
@@ -830,7 +830,7 @@ func TestServer_FilterConn(t *testing.T) {
 
 func TestServer_GetRequestTLS(t *testing.T) {
 	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
-		return TextResponse("okay", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+		return TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "okay", func(resp Response) {
 			resp.Header().Set("x-hello-world", "xyz-123")
 		})
 	}))
@@ -876,7 +876,7 @@ func TestServer_PostRequestTLS(t *testing.T) {
 			t.Errorf("expected %s, got %s", string(requestBody), string(b))
 		}
 
-		return TextResponse("okay", specs.ContentTypePlain, specs.StatusCodeOK, func(resp Response) {
+		return TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "okay", func(resp Response) {
 			resp.Header().Set("x-hello-world", "321-xyz")
 		})
 	}))

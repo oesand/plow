@@ -65,7 +65,7 @@ func TestTransport_PostRequest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	req := BufferRequest(specs.HttpMethodPost, specs.MustParseUrl(server.URL), requestBody, specs.ContentTypePlain)
+	req := BufferRequest(specs.HttpMethodPost, specs.MustParseUrl(server.URL), specs.ContentTypePlain, requestBody)
 	req.Header().Set("x-type", "json")
 	req.Header().Set("x-hello-world", "xyz-123")
 
@@ -134,7 +134,7 @@ func TestTransport_PostChunkedTransferEncodingRequestHttpTest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	req := BufferRequest(specs.HttpMethodPost, specs.MustParseUrl(server.URL), requestBody, specs.ContentTypePlain)
+	req := BufferRequest(specs.HttpMethodPost, specs.MustParseUrl(server.URL), specs.ContentTypePlain, requestBody)
 	req.Header().Set("x-hello-world", "xyz-123")
 	req.Header().Set("Transfer-Encoding", "chunked")
 
@@ -209,7 +209,7 @@ func TestTransport_PostChunkedTransferEncodingRequest(t *testing.T) {
 	}()
 
 	url := specs.MustParseUrl("http://" + listener.Addr().String())
-	req := BufferRequest(specs.HttpMethodPost, url, requestBody, specs.ContentTypePlain)
+	req := BufferRequest(specs.HttpMethodPost, url, specs.ContentTypePlain, requestBody)
 	req.Header().Set("Transfer-Encoding", "chunked")
 	req.Header().Set("x-hello-world", "xyz-123")
 
@@ -470,7 +470,7 @@ func TestTransport_PostRequestTLS(t *testing.T) {
 		InsecureSkipVerify: true,
 	}
 
-	req := BufferRequest(specs.HttpMethodPost, specs.MustParseUrl(url), requestBody, specs.ContentTypePlain)
+	req := BufferRequest(specs.HttpMethodPost, specs.MustParseUrl(url), specs.ContentTypePlain, requestBody)
 	req.Header().Set("x-hello-world", "xyz-123")
 
 	resp, err := transport.RoundTrip(

@@ -8,6 +8,10 @@ import (
 	"sync"
 )
 
+// DefaultClient factory for creating [Client]
+// with optimal parameters for perfomance and safety
+//
+// Each call creates a new instance of [Client]
 func DefaultClient() *Client {
 	return &Client{
 		MaxRedirectCount: DefaultMaxRedirectCount,
@@ -16,24 +20,29 @@ func DefaultClient() *Client {
 	}
 }
 
+// A Client is an HTTP client. Its zero value of [DefaultClient].
+//
+// A Client is higher-level than a [RoundTripper] (such as [Transport])
+// and additionally handles HTTP details such as cookies and
+// redirects.
 type Client struct {
 	// Transport specifies the mechanism by which individual HTTP requests are made.
-	// If nil, DefaultTransport is used.
+	// If nil, [DefaultTransport] is used.
 	Transport RoundTripper
 
 	// MaxRedirectCount maximum number of redirects
 	// before getting an error.
-	// if not specified is used DefaultMaxRedirectCount
+	// if not specified is used [DefaultMaxRedirectCount]
 	MaxRedirectCount int
 
 	// Header specifies independent request header and cookies
 	//
 	// The Header is used to insert headers and cookies
 	// into every outbound Request independent of url.
-	// The Header is consulted for every redirect that the Client follows.
+	// The Header is consulted for every redirect that the [Client] follows.
 	//
 	// If Header is nil, headers and cookies are only sent
-	// if they are explicitly set on the Request.
+	// if they are explicitly set on the [Request].
 	Header *specs.Header
 
 	// Jar specifies the cookie jar with dependent to url
@@ -41,15 +50,23 @@ type Client struct {
 	// The Jar is used to insert relevant requested url cookies
 	// into every outbound Request and is updated
 	// with the cookie values of every inbound Response.
-	// The Jar is consulted for every redirect that the Client follows.
+	// The Jar is consulted for every redirect that the [Client] follows.
 	//
 	// If Jar is nil, cookies are only sent
-	// if they are explicitly set on the Request.
+	// if they are explicitly set on the [Request].
 	Jar *specs.CookieJar
 
 	mu sync.RWMutex
 }
 
+// Make sends an HTTP request and returns an HTTP response, following
+// policy (such as redirects, cookies, auth) as configured on the
+// client.
+//
+// An error is returned if caused by client policy
+// or failure to speak HTTP (such as a network connectivity problem).
+//
+// A non-2xx status code doesn't cause an error.
 func (cln *Client) Make(request ClientRequest) (ClientResponse, error) {
 	if request == nil {
 		panic("nil request pointer")
@@ -57,6 +74,7 @@ func (cln *Client) Make(request ClientRequest) (ClientResponse, error) {
 	return cln.MakeContext(context.Background(), request)
 }
 
+// MakeContext version [Client.Make] with [context.Context] cancellation support
 func (cln *Client) MakeContext(ctx context.Context, request ClientRequest) (ClientResponse, error) {
 	if cln == nil {
 		panic("nil client pointer")

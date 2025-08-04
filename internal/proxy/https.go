@@ -15,7 +15,7 @@ func DialHttps(conn net.Conn, host string, port uint16, creds *Creds) error {
 		return errors.New("https: invalid username")
 	}
 
-	address := client.HostPort(host, port)
+	address := client.HostHeader(host, port, true)
 
 	header := specs.NewHeader()
 	header.Set("Host", address)

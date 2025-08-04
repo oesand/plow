@@ -6,10 +6,6 @@ import (
 	"io"
 )
 
-func EmptyRequest(method specs.HttpMethod, url *specs.Url) ClientRequest {
-	return newRequest(method, url)
-}
-
 func newRequest(method specs.HttpMethod, url *specs.Url) *clientRequest {
 	if !method.IsValid() {
 		panic("giglet/request: invalid method")
@@ -44,16 +40,44 @@ func (req *clientRequest) Header() *specs.Header {
 	return req.header
 }
 
-func TextRequest(method specs.HttpMethod, url *specs.Url, text string, contentType string) ClientRequest {
+// EmptyRequest is implementation for the [ClientRequest] without body
+// to be sent by the [Client].
+//
+// if method unspecified then [specs.HttpMethodGet] will be set
+func EmptyRequest(method specs.HttpMethod, url *specs.Url) ClientRequest {
+	if method == "" {
+		method = specs.HttpMethodGet
+	}
+	return newRequest(method, url)
+}
+
+// TextRequest is implementation for the [ClientRequest]
+// with string as request body to be sent by the [Client] or [Transport].
+//
+// Content type applies as "Content-Type" header value
+//
+// if method unspecified then [specs.HttpMethodPost] will be set
+// if content type unspecified then [specs.ContentTypePlain] will be set
+func TextRequest(method specs.HttpMethod, url *specs.Url, contentType string, text string) ClientRequest {
 	if contentType == specs.ContentTypeUndefined {
 		contentType = specs.ContentTypePlain
 	}
-	return BufferRequest(method, url, []byte(text), contentType)
+	return BufferRequest(method, url, contentType, []byte(text))
 }
 
-func BufferRequest(method specs.HttpMethod, url *specs.Url, buffer []byte, contentType string) ClientRequest {
+// BufferRequest is implementation for the [ClientRequest]
+// with []byte as request body to be sent by the [Client] or [Transport].
+//
+// Content type applies as "Content-Type" header value
+//
+// if method unspecified then [specs.HttpMethodPost] will be set
+// if content type unspecified then [specs.ContentTypeRaw] will be set
+func BufferRequest(method specs.HttpMethod, url *specs.Url, contentType string, buffer []byte) ClientRequest {
 	if method == "" {
 		method = specs.HttpMethodPost
+	}
+	if buffer == nil {
+		panic("giglet/request: passed nil buffer")
 	}
 
 	req := &bufferRequest{
@@ -85,12 +109,16 @@ func (req *bufferRequest) ContentLength() int64 {
 	return req.contentLength
 }
 
-func StreamRequest(method specs.HttpMethod, url *specs.Url, stream io.Reader, contentType string, contentLength int64) ClientRequest {
+// StreamRequest is implementation for the [ClientRequest] that
+// copy response body from [io.Reader] to be sent by the [Client] or [Transport].
+//
+// Content type applies as "Content-Type" header value
+//
+// if method unspecified then [specs.HttpMethodPost] will be set
+// if content type unspecified then [specs.ContentTypeRaw] will be set
+func StreamRequest(method specs.HttpMethod, url *specs.Url, contentType string, stream io.Reader, contentLength int64) ClientRequest {
 	if method == "" {
 		method = specs.HttpMethodPost
-	}
-	if contentLength < 0 {
-		panic("giglet/request: invalid content length")
 	}
 
 	req := &streamRequest{

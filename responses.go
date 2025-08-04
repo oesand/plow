@@ -6,17 +6,10 @@ import (
 	"io"
 )
 
-func EmptyResponse(statusCode specs.StatusCode, configure ...func(Response)) Response {
-	resp := newResponse(statusCode)
-
-	for _, conf := range configure {
-		conf(resp)
-	}
-
-	return resp
-}
-
-func newResponse(statusCode specs.StatusCode) *HeaderResponse {
+// NewHeaderResponse creates new [HeaderResponse]
+//
+// if status code unspecified then [specs.StatusCodeOK] will be set
+func NewHeaderResponse(statusCode specs.StatusCode) *HeaderResponse {
 	if statusCode == specs.StatusCodeUndefined {
 		statusCode = specs.StatusCodeOK
 	}
@@ -26,18 +19,8 @@ func newResponse(statusCode specs.StatusCode) *HeaderResponse {
 	}
 }
 
-func RedirectResponse(url string, configure ...func(Response)) Response {
-	resp := EmptyResponse(specs.StatusCodeTemporaryRedirect, configure...)
-	resp.Header().Set("Location", url)
-	return resp
-}
-
-func PermanentRedirectResponse(url string, configure ...func(Response)) Response {
-	resp := EmptyResponse(specs.StatusCodePermanentRedirect, configure...)
-	resp.Header().Set("Location", url)
-	return resp
-}
-
+// HeaderResponse is basic implementation of the [Response] without body
+// to be sent by the [Server].
 type HeaderResponse struct {
 	_ internal.NoCopy
 
@@ -45,6 +28,9 @@ type HeaderResponse struct {
 	header     *specs.Header
 }
 
+// StatusCode implementation for [Response.StatusCode] interface
+//
+// if status code unspecified then [specs.StatusCodeOK] will be set
 func (resp *HeaderResponse) StatusCode() specs.StatusCode {
 	if resp.statusCode == specs.StatusCodeUndefined {
 		resp.statusCode = specs.StatusCodeOK
@@ -52,6 +38,7 @@ func (resp *HeaderResponse) StatusCode() specs.StatusCode {
 	return resp.statusCode
 }
 
+// Header implementation for [Response.Header] interface
 func (resp *HeaderResponse) Header() *specs.Header {
 	if resp.header == nil {
 		resp.header = specs.NewHeader()
@@ -59,16 +46,66 @@ func (resp *HeaderResponse) Header() *specs.Header {
 	return resp.header
 }
 
-func TextResponse(text string, contentType string, statusCode specs.StatusCode, configure ...func(Response)) Response {
+// EmptyResponse is implementation for the [Response] without body
+// to be sent by the [Server].
+//
+// if status code unspecified then [specs.StatusCodeOK] will be set
+func EmptyResponse(statusCode specs.StatusCode, configure ...func(Response)) Response {
+	resp := NewHeaderResponse(statusCode)
+
+	for _, conf := range configure {
+		conf(resp)
+	}
+
+	return resp
+}
+
+// RedirectResponse is implementation for the [Response] sent by the [Server],
+// based on [EmptyResponse] with [specs.StatusCodeTemporaryRedirect]
+// and "Location" header provided by url.
+func RedirectResponse(url string, configure ...func(Response)) Response {
+	resp := EmptyResponse(specs.StatusCodeTemporaryRedirect, configure...)
+	resp.Header().Set("Location", url)
+	return resp
+}
+
+// PermanentRedirectResponse is implementation for the [Response] sent by the [Server],
+// based on [EmptyResponse] with [specs.StatusCodePermanentRedirect]
+// and "Location" header provided by url.
+func PermanentRedirectResponse(url string, configure ...func(Response)) Response {
+	resp := EmptyResponse(specs.StatusCodePermanentRedirect, configure...)
+	resp.Header().Set("Location", url)
+	return resp
+}
+
+// TextResponse is implementation for the [Response]
+// with string as response body to be sent by the [Server].
+//
+// Content type applies as "Content-Type" header value
+//
+// if status code unspecified then [specs.StatusCodeOK] will be set
+// if content type unspecified then [specs.ContentTypePlain] will be set
+func TextResponse(statusCode specs.StatusCode, contentType string, text string, configure ...func(Response)) Response {
 	if contentType == specs.ContentTypeUndefined {
 		contentType = specs.ContentTypePlain
 	}
-	return BufferResponse([]byte(text), contentType, statusCode, configure...)
+	return BufferResponse(statusCode, contentType, []byte(text), configure...)
 }
 
-func BufferResponse(buffer []byte, contentType string, statusCode specs.StatusCode, configure ...func(Response)) Response {
+// BufferResponse is implementation for the [Response]
+// with []byte as response body to be sent by the [Server].
+//
+// Content type applies as "Content-Type" header value
+//
+// if status code unspecified then [specs.StatusCodeOK] will be set
+// if content type unspecified then [specs.ContentTypeRaw] will be set
+func BufferResponse(statusCode specs.StatusCode, contentType string, buffer []byte, configure ...func(Response)) Response {
+	if buffer == nil {
+		panic("giglet/response: passed nil buffer")
+	}
+
 	resp := &bufferResponse{
-		HeaderResponse: *newResponse(statusCode),
+		HeaderResponse: *NewHeaderResponse(statusCode),
 		buffer:         buffer,
 		contentLength:  int64(len(buffer)),
 	}
@@ -100,16 +137,20 @@ func (resp *bufferResponse) ContentLength() int64 {
 	return resp.contentLength
 }
 
-func StreamResponse(stream io.Reader, contentType string, contentLength int64, statusCode specs.StatusCode, configure ...func(Response)) Response {
+// StreamResponse is implementation for the [Response] that
+// copy response body from [io.Reader] to be sent by the [Server].
+//
+// Content type applies as "Content-Type" header value
+//
+// if status code unspecified then [specs.StatusCodeOK] will be set
+// if content type unspecified then [specs.ContentTypeRaw] will be set
+func StreamResponse(statusCode specs.StatusCode, contentType string, stream io.Reader, contentLength int64, configure ...func(Response)) Response {
 	if stream == nil {
 		panic("giglet/response: passed nil stream")
 	}
-	if contentLength < 0 {
-		panic("giglet/response: invalid content length")
-	}
 
 	resp := &streamResponse{
-		HeaderResponse: *newResponse(statusCode),
+		HeaderResponse: *NewHeaderResponse(statusCode),
 		stream:         stream,
 		contentLength:  contentLength,
 	}

@@ -18,11 +18,6 @@ func BearerAuthHeader(token string) string {
 	return "Bearer " + token
 }
 
-func WithBasicAuthHeader(header *Header, username, password string) *Header {
-	header.Set("Authorization", BasicAuthHeader(username, password))
-	return header
-}
-
 func WithBearerAuthHeader(header *Header, token string) *Header {
 	header.Set("Authorization", BearerAuthHeader(token))
 	return header

@@ -83,14 +83,14 @@ func (header *Header) AnyCookies() bool {
 
 func (header *Header) GetCookie(name string) *Cookie {
 	if header.AnyCookies() {
-		return header.cookies[name]
+		return header.cookies[plain.TitleCase(name)]
 	}
 	return nil
 }
 
 func (header *Header) HasCookie(name string) bool {
 	if header.AnyCookies() {
-		_, has := header.cookies[name]
+		_, has := header.cookies[plain.TitleCase(name)]
 		return has
 	}
 	return false
@@ -110,7 +110,7 @@ func (header *Header) SetCookie(cookie Cookie) {
 		header.cookies = map[string]*Cookie{}
 	}
 
-	header.cookies[cookie.Name] = &cookie
+	header.cookies[plain.TitleCase(cookie.Name)] = &cookie
 }
 
 func (header *Header) SetCookieValue(name, value string) {

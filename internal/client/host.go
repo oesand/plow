@@ -7,6 +7,8 @@ import (
 	"unicode"
 )
 
+// HostPort concat host and port.
+// host must be idna formatted
 func HostPort(host string, port uint16) string {
 	return host + ":" + strconv.FormatUint(uint64(port), 10)
 }
@@ -29,9 +31,17 @@ func isAscii(s string) bool {
 	return true
 }
 
-// TODO removeZone removes IPv6 zone identifier from host.
-// E.g., "[fe80::1%en0]:8080" to "[fe80::1]:8080"
-func removeZone(host string) string {
+// HostHeader compute valid host header.
+// host must be idna formatted
+func HostHeader(host string, port uint16, isProxy bool) string {
+	host = removeIPv6Zone(host)
+	if !isProxy && (port == 80 || port == 443) {
+		return host
+	}
+	return HostPort(host, port)
+}
+
+func removeIPv6Zone(host string) string {
 	if !strings.HasPrefix(host, "[") {
 		return host
 	}

@@ -53,7 +53,7 @@ func TestClient_PostRequest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	req := BufferRequest(specs.HttpMethodPost, specs.MustParseUrl(server.URL), requestBody, specs.ContentTypePlain)
+	req := BufferRequest(specs.HttpMethodPost, specs.MustParseUrl(server.URL), specs.ContentTypePlain, requestBody)
 	req.Header().Set("x-type", "json")
 	req.Header().Set("x-hello-world", "xyz-123")
 
@@ -147,14 +147,14 @@ func TestClient_PostAnyRequest(t *testing.T) {
 		{
 			name: "TextRequest",
 			request: func(url *specs.Url) ClientRequest {
-				return TextRequest(specs.HttpMethodPost, url, "text-request-body", specs.ContentTypePlain)
+				return TextRequest(specs.HttpMethodPost, url, specs.ContentTypePlain, "text-request-body")
 			},
 			wantBody: []byte("text-request-body"),
 		},
 		{
 			name: "BufferRequest",
 			request: func(url *specs.Url) ClientRequest {
-				return BufferRequest(specs.HttpMethodPost, url, []byte("buffer-request-body"), specs.ContentTypeRaw)
+				return BufferRequest(specs.HttpMethodPost, url, specs.ContentTypeRaw, []byte("buffer-request-body"))
 			},
 			wantBody: []byte("buffer-request-body"),
 		},
@@ -163,7 +163,7 @@ func TestClient_PostAnyRequest(t *testing.T) {
 			request: func(url *specs.Url) ClientRequest {
 				var buf bytes.Buffer
 				buf.WriteString("stream-request-body")
-				return StreamRequest(specs.HttpMethodPost, url, &buf, specs.ContentTypeRaw, int64(buf.Len()))
+				return StreamRequest(specs.HttpMethodPost, url, specs.ContentTypeRaw, &buf, int64(buf.Len()))
 			},
 			wantBody: []byte("stream-request-body"),
 		},
