@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/tls"
+	"fmt"
 	"github.com/andybalholm/brotli"
 	"github.com/armon/go-socks5"
 	"github.com/oesand/giglet/internal/server"
@@ -510,7 +511,7 @@ func TestTransport_Sock5Proxy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var connectedProxy bool
+	var connectedProxy atomic.Bool
 
 	go func() {
 		var conn net.Conn
@@ -526,7 +527,7 @@ func TestTransport_Sock5Proxy(t *testing.T) {
 			}
 			break
 		}
-		connectedProxy = true
+		connectedProxy.Store(true)
 		if err := proxyServer.ServeConn(conn); err != nil {
 			t.Error(err)
 		}
@@ -550,7 +551,7 @@ func TestTransport_Sock5Proxy(t *testing.T) {
 
 	checkResponseBody(t, resp, testContent)
 
-	if !connectedProxy {
+	if !connectedProxy.Load() {
 		t.Fatal("not was connected to proxy server")
 	}
 }
@@ -700,6 +701,173 @@ func TestTransport_HttpProxyAuth(t *testing.T) {
 	transport.Proxy = FixedProxyUrl(proxyUrl)
 
 	url := specs.MustParseUrl("http://test.org/")
+	resp, err := transport.RoundTrip(context.Background(), specs.HttpMethodGet, *url, header, nil)
+
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	if resp.Header().Get("X-Pong") != "xyz-321" {
+		t.Errorf("not found expected headers, %+v", resp.Header())
+	}
+
+	checkResponseBody(t, resp, testContent)
+
+	if !connectedProxy.Load() {
+		t.Fatal("not was connected to proxy server")
+	}
+}
+
+func TestTransport_HttpsProxy(t *testing.T) {
+	testContent := []byte("Content\nEncoding 1234567890")
+
+	closeServer, url := newTestServer(func(req Request) (specs.StatusCode, *specs.Header, []byte) {
+		if req.Header().Get("X-ping") != "xyz-123" {
+			t.Errorf("not found expected headers, %+v", req.Header())
+		}
+
+		header := specs.NewHeader()
+		header.Set("Content-Length", strconv.Itoa(len(testContent)))
+		header.Set("x-pong", "xyz-321")
+
+		return specs.StatusCodeOK, header, testContent
+	})
+	defer closeServer()
+
+	var connectedProxy atomic.Bool
+
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Logf("HTTPS Tunnel: CONNECT %s\n", r.Host)
+
+		destConn, err := net.Dial("tcp", r.Host)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+
+		hijacker, ok := w.(http.Hijacker)
+		if !ok {
+			http.Error(w, "Hijacking not supported", http.StatusInternalServerError)
+			return
+		}
+		clientConn, _, err := hijacker.Hijack()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+
+		fmt.Fprint(clientConn, "HTTP/1.1 200 Connection Established\r\n\r\n")
+
+		transfer := func(dst net.Conn, src net.Conn) {
+			defer dst.Close()
+			defer src.Close()
+			io.Copy(dst, src)
+		}
+
+		go transfer(destConn, clientConn)
+		go transfer(clientConn, destConn)
+
+		connectedProxy.Store(true)
+	}))
+	defer proxyServer.Close()
+
+	proxyUrl := specs.MustParseUrl(proxyServer.URL)
+
+	header := specs.NewHeader()
+	header.Set("x-ping", "xyz-123")
+
+	transport := DefaultTransport()
+	proxyUrl.Scheme = "https"
+	transport.Proxy = FixedProxyUrl(proxyUrl)
+
+	resp, err := transport.RoundTrip(context.Background(), specs.HttpMethodGet, *url, header, nil)
+
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	if resp.Header().Get("X-Pong") != "xyz-321" {
+		t.Errorf("not found expected headers, %+v", resp.Header())
+	}
+
+	checkResponseBody(t, resp, testContent)
+
+	if !connectedProxy.Load() {
+		t.Fatal("not was connected to proxy server")
+	}
+}
+
+func TestTransport_HttpsProxyAuth(t *testing.T) {
+	testContent := []byte("Content\nEncoding 1234567890")
+
+	closeServer, url := newTestServer(func(req Request) (specs.StatusCode, *specs.Header, []byte) {
+		if req.Header().Get("X-ping") != "xyz-123" {
+			t.Errorf("not found expected headers, %+v", req.Header())
+		}
+
+		header := specs.NewHeader()
+		header.Set("Content-Length", strconv.Itoa(len(testContent)))
+		header.Set("x-pong", "xyz-321")
+
+		return specs.StatusCodeOK, header, testContent
+	})
+	defer closeServer()
+
+	var connectedProxy atomic.Bool
+
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Proxy-Authorization") != specs.BasicAuthHeader("usern", "pass") {
+			user, pass, _ := specs.ParseBasicAuthHeader(r.Header.Get("Proxy-Authorization"))
+			t.Errorf("invalid creds: %s : %s", user, pass)
+			http.Error(w, "Invalid creds", http.StatusProxyAuthRequired)
+			return
+		}
+
+		t.Logf("HTTPS Tunnel: CONNECT %s\n", r.Host)
+
+		destConn, err := net.Dial("tcp", r.Host)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+
+		hijacker, ok := w.(http.Hijacker)
+		if !ok {
+			http.Error(w, "Hijacking not supported", http.StatusInternalServerError)
+			return
+		}
+		clientConn, _, err := hijacker.Hijack()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+
+		fmt.Fprint(clientConn, "HTTP/1.1 200 Connection Established\r\n\r\n")
+
+		transfer := func(dst net.Conn, src net.Conn) {
+			defer dst.Close()
+			defer src.Close()
+			io.Copy(dst, src)
+		}
+
+		go transfer(destConn, clientConn)
+		go transfer(clientConn, destConn)
+
+		connectedProxy.Store(true)
+	}))
+	defer proxyServer.Close()
+
+	proxyUrl := specs.MustParseUrl(proxyServer.URL)
+
+	header := specs.NewHeader()
+	header.Set("x-ping", "xyz-123")
+
+	transport := DefaultTransport()
+	proxyUrl.Scheme = "https"
+	proxyUrl.Username = "usern"
+	proxyUrl.Password = "pass"
+	transport.Proxy = FixedProxyUrl(proxyUrl)
+
 	resp, err := transport.RoundTrip(context.Background(), specs.HttpMethodGet, *url, header, nil)
 
 	if err != nil {

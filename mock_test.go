@@ -107,7 +107,13 @@ func newTestServer(handler func(req Request) (specs.StatusCode, *specs.Header, [
 			header = specs.NewHeader()
 		}
 		server.WriteResponseHead(conn, true, code, header)
-		conn.Write(body)
+		if body != nil {
+			conn.Write(body)
+		}
+		if hijacker := req.Hijacker(); hijacker != nil {
+			hijacker(ctx, conn)
+		}
+
 		conn.Close()
 	}()
 

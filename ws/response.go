@@ -12,23 +12,23 @@ import (
 
 func UpgradeResponse(req giglet.Request, handler Handler) giglet.Response {
 	if req.Method() != specs.HttpMethodGet {
-		return giglet.TextResponse("websocket: upgrading required request method - GET",
-			specs.ContentTypePlain, specs.StatusCodeMethodNotAllowed)
+		return giglet.TextResponse(specs.StatusCodeMethodNotAllowed, specs.ContentTypePlain,
+			"websocket: upgrading required request method - GET")
 	} else if !strings.EqualFold(req.Header().Get("Connection"), "upgrade") {
-		return giglet.TextResponse("websocket: 'Upgrade' token not found in 'Connection' header",
-			specs.ContentTypePlain, specs.StatusCodeBadRequest)
+		return giglet.TextResponse(specs.StatusCodeBadRequest, specs.ContentTypePlain,
+			"websocket: 'Upgrade' token not found in 'Connection' header")
 	} else if !strings.EqualFold(req.Header().Get("Upgrade"), "websocket") {
-		return giglet.TextResponse("websocket: 'websocket' token not found in 'Upgrade' header",
-			specs.ContentTypePlain, specs.StatusCodeBadRequest)
+		return giglet.TextResponse(specs.StatusCodeBadRequest, specs.ContentTypePlain,
+			"websocket: 'websocket' token not found in 'Upgrade' header")
 	} else if req.Header().Get("Sec-Websocket-Version") != "13" {
-		return giglet.TextResponse("websocket: supports only websocket 13 version",
-			specs.ContentTypePlain, specs.StatusCodeNotImplemented)
+		return giglet.TextResponse(specs.StatusCodeNotImplemented, specs.ContentTypePlain,
+			"websocket: supports only websocket 13 version")
 	}
 
 	challengeKey := req.Header().Get("Sec-Websocket-Key")
 	if len(challengeKey) == 0 {
-		return giglet.TextResponse("websocket: not a websocket handshake: `Sec-WebSocket-Key' header is missing or blank",
-			specs.ContentTypePlain, specs.StatusCodeBadRequest)
+		return giglet.TextResponse(specs.StatusCodeBadRequest, specs.ContentTypePlain,
+			"websocket: not a websocket handshake: `Sec-WebSocket-Key' header is missing or blank")
 	}
 
 	var challengeProtocols []string
