@@ -6,8 +6,10 @@ import (
 	"strings"
 )
 
+// Query represents a parsed query string from a URL.
 type Query map[string]string
 
+// ParseQuery parses a query string into a Query map.
 func ParseQuery(query string) Query {
 	q := make(Query)
 	if query == "" {
@@ -40,10 +42,12 @@ func ParseQuery(query string) Query {
 	return q
 }
 
+// Any checks if the Query contains any key-value pairs.
 func (q Query) Any() bool {
 	return q != nil && len(q) > 0
 }
 
+// String returns the query string representation of the Query.
 func (q Query) String() string {
 	if q == nil || len(q) == 0 {
 		return ""

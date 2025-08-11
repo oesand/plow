@@ -5,3 +5,7 @@ import (
 )
 
 var IsNotTesting = !testing.Testing()
+
+type FlagKey struct {
+	Key string
+}

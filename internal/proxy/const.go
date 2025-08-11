@@ -29,16 +29,16 @@ func WithAuthHeader(header *specs.Header, username, password string) *specs.Head
 	return header
 }
 
-type resolvedAddr struct {
+type ResolvedAddr struct {
 	Net    string
 	Domain string
 	IP     net.IP
 	Port   int
 }
 
-func (a *resolvedAddr) Network() string { return a.Net }
+func (a *ResolvedAddr) Network() string { return a.Net }
 
-func (a *resolvedAddr) String() string {
+func (a *ResolvedAddr) String() string {
 	if a == nil {
 		return "<nil>"
 	}

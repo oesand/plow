@@ -2,8 +2,8 @@ package giglet
 
 import (
 	"crypto/tls"
+	"errors"
 	"github.com/oesand/giglet/specs"
-	"log"
 	"net"
 	"slices"
 	"sync"
@@ -34,17 +34,30 @@ func DefaultServer(handler Handler) *Server {
 // A Server defines parameters for running an HTTP server.
 // The zero value for Server is a valid configuration.
 type Server struct {
-	// Handler to invoke
+
+	// Handler defines the function to be called for handling each incoming HTTP request.
+	// This is the main handler implementing the [Handler] interface, which processes requests and generates responses.
+	// Handler must be safe for concurrent use, as the server may invoke it from multiple goroutines simultaneously.
+	//
+	// If Handler is nil, the server cannot process requests and will panic during initialization.
+	// If Handler implements the [ErrorHandler] interface and [Server.ErrorHandler] is nil,
+	// it will be used as the ErrorHandler.
 	Handler Handler
 
-	Logger *log.Logger
+	// ErrorHandler defines a function for handling errors that occur during HTTP request processing.
+	// This can include read/write errors, protocol errors, internal server errors, and other exceptional situations.
+	//
+	// ErrorHandler is called with error details and request context, allowing custom logic for logging,
+	// returning special HTTP responses, or collecting metrics. Must be safe for concurrent use, as the server
+	// may invoke it from multiple goroutines simultaneously.
+	//
+	// If ErrorHandler is not set, the server may use default error handling
+	// or try to use the Handler as an ErrorHandler if it implements the [ErrorHandler] interface.
+	ErrorHandler ErrorHandler
 
 	// FilterConn handles all new incoming connections to provide filtering by address
 	// Returns true - accept, false - close connection
 	FilterConn func(addr net.Addr) bool
-
-	// Debug flag to allow show system messages
-	Debug bool
 
 	// ServerName for sending in response headers.
 	ServerName string
@@ -107,13 +120,6 @@ type Server struct {
 
 func (srv *Server) beforeOnce() {
 	srv.shuttingDown = make(chan struct{})
-}
-
-func (srv *Server) logger() *log.Logger {
-	if srv.Logger != nil {
-		return srv.Logger
-	}
-	return log.Default()
 }
 
 // TLSHasNextProto checks if a handler function is specified
@@ -247,7 +253,7 @@ func (srv *Server) ServeTLS(lst net.Listener, certFile, keyFile string) error {
 	if srv.IsShutdown() {
 		return specs.ErrClosed
 	} else if len(certFile) == 0 || len(keyFile) == 0 {
-		panic("unknown certificate source")
+		return errors.New("unknown certificate source")
 	}
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {

@@ -19,11 +19,18 @@ func (resp *ErrorResponse) Error() string {
 	return "<" + string(resp.Code.Formatted()) + ">: " + resp.Text
 }
 
-func (resp *ErrorResponse) WriteTo(writer io.Writer) error {
-	_, err := WriteResponseHead(writer, false, resp.Code, closeHeaders)
-	if err != nil {
-		return err
+func (resp *ErrorResponse) WriteTo(writer io.Writer) (int64, error) {
+	code := resp.Code
+	if code == 0 {
+		code = specs.StatusCodeInternalServerError
 	}
-	_, err = writer.Write([]byte(resp.Text))
-	return err
+	hl, err := WriteResponseHead(writer, false, code, closeHeaders)
+	if err != nil {
+		return 0, err
+	}
+	bl, err := writer.Write([]byte(resp.Text))
+	if err != nil {
+		return 0, err
+	}
+	return hl + int64(bl), nil
 }

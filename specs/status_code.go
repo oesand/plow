@@ -2,8 +2,11 @@ package specs
 
 import "strconv"
 
+// StatusCode represents an HTTP status code.
 type StatusCode uint16
 
+// Predefined HTTP status codes as per RFC 7231 and related specifications.
+// These codes are used to indicate the result of an HTTP request.
 const (
 	StatusCodeUndefined StatusCode = 0
 
@@ -75,29 +78,34 @@ const (
 	StatusCodeNetworkAuthenticationRequired StatusCode = 511
 )
 
-func (status StatusCode) IsReplyable() bool {
-	noContent := (100 <= status && status < 200) || status == 204 || (300 <= status && status < 400)
+// IsReplyable returns true if the status code is suitable for a reply.
+func (code StatusCode) IsReplyable() bool {
+	noContent := (100 <= code && code < 200) || code == 204 || (300 <= code && code < 400)
 	return !noContent
 }
 
-func (status StatusCode) IsValid() bool {
-	return 100 <= status && status < 600
+// IsValid checks if the status code is within the valid range of HTTP status codes.
+func (code StatusCode) IsValid() bool {
+	return 100 <= code && code < 600
 }
 
-func (status StatusCode) IsRedirect() bool {
-	return status == StatusCodeMovedPermanently ||
-		status == StatusCodeFound ||
-		status == StatusCodeSeeOther ||
-		status == StatusCodeTemporaryRedirect ||
-		status == StatusCodePermanentRedirect
+// IsRedirect checks if the status code indicates a redirection.
+func (code StatusCode) IsRedirect() bool {
+	return code == StatusCodeMovedPermanently ||
+		code == StatusCodeFound ||
+		code == StatusCodeSeeOther ||
+		code == StatusCodeTemporaryRedirect ||
+		code == StatusCodePermanentRedirect
 }
 
-func (status StatusCode) Formatted() []byte {
-	buf := strconv.AppendUint(nil, uint64(status), 10)
+// Formatted returns the status code as a byte slice formatted for HTTP responses.
+func (code StatusCode) Formatted() []byte {
+	buf := strconv.AppendUint(nil, uint64(code), 10)
 	buf = append(buf, ' ')
-	return append(buf, status.Detail()...)
+	return append(buf, code.Detail()...)
 }
 
+// Detail returns the standard text description for the status code.
 func (code StatusCode) Detail() []byte {
 	switch code {
 	case StatusCodeContinue:

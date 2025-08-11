@@ -1,7 +1,10 @@
 package ws
 
+// WsCloseCode represents the WebSocket close codes as defined in RFC 6455.
 type WsCloseCode uint16
 
+// Predefined WebSocket close codes as per RFC 6455.
+// These codes are used to indicate the reason for closing a WebSocket connection.
 const (
 	CloseCodeNormal              WsCloseCode = 1000
 	CloseCodeGoingAway           WsCloseCode = 1001

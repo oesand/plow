@@ -21,14 +21,21 @@ type Handler interface {
 	Handle(ctx context.Context, request Request) Response
 }
 
+// ErrorHandler is an interface representing the ability to handle errors
+// that occur during the processing of a request by a [Server].
+type ErrorHandler interface {
+	HandleError(ctx context.Context, conn net.Conn, err any)
+}
+
 // RoundTripper is an interface representing the ability to execute a
 // single HTTP transaction, obtaining the [ClientResponse] for a
 // given request parts [specs.HttpMethod], [specs.Url], [specs.Header] and
-// optional [BodyWriter] for send HTTP request body to server.
+// optional [BodyWriter].
 //
 // A RoundTripper must be concurrent safe for use by multiple goroutines.
 type RoundTripper interface {
-	// RoundTrip executes a single HTTP transaction, returning a [ClientResponse] for the provided request parts.
+	// RoundTrip executes a single HTTP transaction,
+	// returning a [ClientResponse] for the provided request parts.
 	RoundTrip(ctx context.Context, method specs.HttpMethod, url specs.Url, header *specs.Header, writer BodyWriter) (ClientResponse, error)
 }
 
@@ -52,6 +59,14 @@ type HandlerFunc func(ctx context.Context, request Request) Response
 // Handle triggers top level function [HandlerFunc]
 func (f HandlerFunc) Handle(ctx context.Context, request Request) Response {
 	return f(ctx, request)
+}
+
+// ErrorHandlerFunc shorthand implementation for [ErrorHandler]
+type ErrorHandlerFunc func(ctx context.Context, conn net.Conn, err any)
+
+// HandleError triggers top level function [ErrorHandlerFunc]
+func (f ErrorHandlerFunc) HandleError(ctx context.Context, conn net.Conn, err any) {
+	f(ctx, conn, err)
 }
 
 // RoundTripperFunc shorthand implementation for [RoundTripper]

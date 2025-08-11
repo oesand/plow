@@ -121,7 +121,7 @@ func DialSocks5(conn net.Conn, host string, port uint16, creds *Creds) (net.Addr
 	}
 
 	l := 2
-	var addr = resolvedAddr{Net: "socks"}
+	var addr = ResolvedAddr{Net: "socks"}
 	switch buf[3] {
 	case socksAddrTypeIPv4:
 		l += net.IPv4len

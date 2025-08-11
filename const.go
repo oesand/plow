@@ -3,6 +3,7 @@ package giglet
 import (
 	"github.com/oesand/giglet/internal/server"
 	"github.com/oesand/giglet/specs"
+	"io"
 	"net"
 	"time"
 )
@@ -38,4 +39,21 @@ var (
 		Code: specs.StatusCodeRequestEntityTooLarge,
 		Text: "http: too large body",
 	}
+	responseInternalServerError = &server.ErrorResponse{
+		Code: specs.StatusCodeInternalServerError,
+		Text: "http: internal server error",
+	}
 )
+
+// ShortResponseWriter creates an io.WriterTo implementation that writes a short HTTP error response.
+// initialized with the provided status code and text.
+//
+// This is useful for quickly generating responses in HTTP handlers, ensuring consistent formatting
+// and status codes across the application. The returned object implements io.WriterTo, allowing it to be
+// written directly to an io.Writer, such as net.Conn.
+func ShortResponseWriter(code specs.StatusCode, text string) io.WriterTo {
+	return &server.ErrorResponse{
+		Code: code,
+		Text: text,
+	}
+}

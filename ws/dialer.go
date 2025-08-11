@@ -5,31 +5,41 @@ import (
 	"context"
 	"fmt"
 	"github.com/oesand/giglet"
+	"github.com/oesand/giglet/internal"
 	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
 	"slices"
 	"strings"
 )
 
-type DialConf struct {
-	Origin    string
+// DefaultDialer returns a new Dialer with default settings.
+func DefaultDialer() *Dialer {
+	return &Dialer{}
+}
+
+// Dialer is used to create a WebSocket connection to a server.
+type Dialer struct {
+	_ internal.NoCopy
+
+	// Origin is the value of the "Origin" header in the WebSocket handshake request.
+	Origin string
+
+	// Protocols is a list of subprotocols that the client supports.
 	Protocols []string
 }
 
-func Dial(client *giglet.Client, url specs.Url) (Conn, error) {
+// Dial creates a WebSocket connection to the specified URL using the provided client.
+func (dialer *Dialer) Dial(client *giglet.Client, url specs.Url) (Conn, error) {
 	ctx := context.Background()
-	return dial(ctx, client, &url, &DialConf{})
+	return dialer.dial(ctx, client, &url)
 }
 
-func DialContext(ctx context.Context, client *giglet.Client, url specs.Url) (Conn, error) {
-	return dial(ctx, client, &url, &DialConf{})
+// DialContext creates a WebSocket connection to the specified URL using the provided client and context.
+func (dialer *Dialer) DialContext(ctx context.Context, client *giglet.Client, url specs.Url) (Conn, error) {
+	return dialer.dial(ctx, client, &url)
 }
 
-func DialContextConf(ctx context.Context, client *giglet.Client, url specs.Url, conf DialConf) (Conn, error) {
-	return dial(ctx, client, &url, &conf)
-}
-
-func dial(ctx context.Context, client *giglet.Client, url *specs.Url, conf *DialConf) (Conn, error) {
+func (dialer *Dialer) dial(ctx context.Context, client *giglet.Client, url *specs.Url) (Conn, error) {
 	if ctx == nil {
 		panic("nil Context pointer")
 	}
@@ -51,13 +61,14 @@ func dial(ctx context.Context, client *giglet.Client, url *specs.Url, conf *Dial
 	case "wss":
 		httpScheme = "https"
 	default:
-		panic(fmt.Sprintf("unsupported scheme %s", url.Scheme))
+		return nil, fmt.Errorf("unsupported scheme %s", url.Scheme)
 	}
 
 	httpUrl := *url
 	httpUrl.Scheme = httpScheme
 
-	req := giglet.HijackRequest(specs.HttpMethodGet, &httpUrl)
+	hijacker, ctx := giglet.WithTransportHijacker(ctx)
+	req := giglet.EmptyRequest(specs.HttpMethodGet, &httpUrl)
 
 	req.Header().Set("Connection", "Upgrade")
 	req.Header().Set("Upgrade", "websocket")
@@ -66,12 +77,12 @@ func dial(ctx context.Context, client *giglet.Client, url *specs.Url, conf *Dial
 	challengeKey := newChallengeKey()
 	req.Header().Set("Sec-WebSocket-Key", string(challengeKey))
 
-	if conf.Origin != "" {
-		req.Header().Set("Origin", conf.Origin)
+	if dialer.Origin != "" {
+		req.Header().Set("Origin", dialer.Origin)
 	}
 
-	if len(conf.Protocols) > 0 {
-		req.Header().Set("Sec-WebSocket-Protocol", strings.Join(conf.Protocols, ","))
+	if len(dialer.Protocols) > 0 {
+		req.Header().Set("Sec-WebSocket-Protocol", strings.Join(dialer.Protocols, ","))
 	}
 
 	resp, err := client.MakeContext(ctx, req)
@@ -101,13 +112,14 @@ func dial(ctx context.Context, client *giglet.Client, url *specs.Url, conf *Dial
 		return nil, specs.NewOpError("ws", "unsupported extensions")
 	}
 
-	if len(conf.Protocols) > 0 {
-		if proto := resp.Header().Get("Sec-WebSocket-Protocol"); !slices.Contains(conf.Protocols, proto) {
+	var selectedProtocol string
+	if len(dialer.Protocols) > 0 {
+		if selectedProtocol = resp.Header().Get("Sec-WebSocket-Protocol"); !slices.Contains(dialer.Protocols, selectedProtocol) {
 			return nil, ErrUnknownProtocol
 		}
 	}
 
-	conn := req.Conn()
+	conn := hijacker.Conn
 	if conn == nil {
 		return nil, specs.NewOpError("ws", "fail to hijack connection")
 	}
@@ -116,5 +128,5 @@ func dial(ctx context.Context, client *giglet.Client, url *specs.Url, conf *Dial
 	writer := stream.DefaultBufioWriterPool.Get(conn)
 	rws := bufio.NewReadWriter(reader, writer)
 
-	return newClientConn(*url, conn, rws), nil
+	return newClientConn(*url, conn, rws, selectedProtocol), nil
 }

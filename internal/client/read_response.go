@@ -32,10 +32,7 @@ func ReadResponse(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 		return nil, err
 	}
 
-	resp := &HttpClientResponse{
-		status: status,
-		header: header,
-	}
+	resp := NewHttpClientResponse(status, header)
 
 	return resp, nil
 }

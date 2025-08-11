@@ -101,7 +101,7 @@ func TextResponse(statusCode specs.StatusCode, contentType string, text string, 
 // if content type unspecified then [specs.ContentTypeRaw] will be set
 func BufferResponse(statusCode specs.StatusCode, contentType string, buffer []byte, configure ...func(Response)) Response {
 	if buffer == nil {
-		panic("giglet/response: passed nil buffer")
+		panic("passed nil buffer")
 	}
 
 	resp := &bufferResponse{
@@ -146,7 +146,7 @@ func (resp *bufferResponse) ContentLength() int64 {
 // if content type unspecified then [specs.ContentTypeRaw] will be set
 func StreamResponse(statusCode specs.StatusCode, contentType string, stream io.Reader, contentLength int64, configure ...func(Response)) Response {
 	if stream == nil {
-		panic("giglet/response: passed nil stream")
+		panic("passed nil stream")
 	}
 
 	resp := &streamResponse{

@@ -9,21 +9,29 @@ import (
 	"time"
 )
 
+// NewCookieJar creates a new CookieJar instance.
 func NewCookieJar() *CookieJar {
 	return &CookieJar{
 		cookies: make(map[string]map[string]*Cookie),
 	}
 }
 
+// CookieJar is a thread-safe cookie storage that allows storing and retrieving cookies
+// based on the host they are associated with. It uses the Effective TLD Plus One (eTLD+1) rule
+// to determine the host for which the cookies are valid.
 type CookieJar struct {
-	mutex sync.RWMutex
-
 	cookies map[string]map[string]*Cookie
+
+	mu sync.RWMutex
 }
 
+// GetCookie retrieves a cookie by its host and name.
+//
+// If the cookie is expired, it will be removed from the jar.
+// If the host is not valid or the cookie does not exist, it returns nil.
 func (jar *CookieJar) GetCookie(host string, name string) *Cookie {
-	jar.mutex.RLock()
-	defer jar.mutex.RUnlock()
+	jar.mu.RLock()
+	defer jar.mu.RUnlock()
 	if jar.cookies == nil || len(jar.cookies) == 0 {
 		return nil
 	}
@@ -51,9 +59,10 @@ func (jar *CookieJar) GetCookie(host string, name string) *Cookie {
 	return nil
 }
 
+// Cookies returns an iterator over all cookies associated with the given host.
 func (jar *CookieJar) Cookies(host string) iter.Seq[Cookie] {
-	jar.mutex.RLock()
-	defer jar.mutex.RUnlock()
+	jar.mu.RLock()
+	defer jar.mu.RUnlock()
 	if jar.cookies == nil || len(jar.cookies) == 0 {
 		return internal.EmptyIterSeq[Cookie]()
 	}
@@ -69,8 +78,8 @@ func (jar *CookieJar) Cookies(host string) iter.Seq[Cookie] {
 	}
 
 	return func(yield func(Cookie) bool) {
-		jar.mutex.RLock()
-		defer jar.mutex.RUnlock()
+		jar.mu.RLock()
+		defer jar.mu.RUnlock()
 
 		now := time.Now()
 		var expired []string
@@ -89,12 +98,14 @@ func (jar *CookieJar) Cookies(host string) iter.Seq[Cookie] {
 	}
 }
 
+// SetCookie sets a single cookie for the specified host.
 func (jar *CookieJar) SetCookie(host string, cookie Cookie) {
 	jar.SetCookiesIter(host, func(yield func(Cookie) bool) {
 		yield(cookie)
 	})
 }
 
+// SetCookies sets multiple cookies for the specified host.
 func (jar *CookieJar) SetCookies(host string, cookies []Cookie) {
 	jar.SetCookiesIter(host, func(yield func(Cookie) bool) {
 		for _, cookie := range cookies {
@@ -105,9 +116,10 @@ func (jar *CookieJar) SetCookies(host string, cookies []Cookie) {
 	})
 }
 
+// SetCookiesIter sets multiple cookies for the specified host using an iterator.
 func (jar *CookieJar) SetCookiesIter(host string, cookies iter.Seq[Cookie]) {
-	jar.mutex.Lock()
-	defer jar.mutex.Unlock()
+	jar.mu.Lock()
+	defer jar.mu.Unlock()
 
 	tdl, err := publicsuffix.EffectiveTLDPlusOne(host)
 	if err != nil {

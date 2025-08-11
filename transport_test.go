@@ -54,7 +54,8 @@ func TestTransport_PostRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Hello-World") != "xyz-123" ||
 			r.Header.Get("Content-Length") != strconv.Itoa(len(requestBody)) ||
-			r.Header.Get("x-Type") != "json" {
+			r.Header.Get("Content-Type") != specs.ContentTypePlain ||
+			r.Header.Get("X-Type") != "json" {
 			t.Errorf("not found expected headers: %+v", r.Header)
 		}
 

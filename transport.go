@@ -236,8 +236,7 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 
 		var proxyCreds *proxy.Creds
 		if proxyUrl.Username != "" {
-			//goland:noinspection GoStructInitializationWithoutFieldNames
-			proxyCreds = &proxy.Creds{proxyUrl.Username, proxyUrl.Password}
+			proxyCreds = &proxy.Creds{Username: proxyUrl.Username, Password: proxyUrl.Password}
 		}
 
 		err = transport.dialProxy(ctx, conn, proxyUrl.Scheme, host, url.Port, proxyCreds)
@@ -328,8 +327,16 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 		return nil, err
 	}
 
+	hijacker, hasHijacker := ctx.Value(transportHijackerKey).(*TransportHijacker)
+
 	if !method.IsReplyable() || !resp.StatusCode().IsReplyable() {
-		if header.Get("Connection") == "close" {
+		if hasHijacker {
+			if header.Get("Connection") == "close" {
+				conn.Close()
+			} else {
+				hijacker.Conn = conn
+			}
+		} else {
 			conn.Close()
 		}
 	} else {
@@ -403,6 +410,10 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 				return nil, err
 			}
 		}
+
+		if hasHijacker {
+			hijacker.Conn = conn
+		}
 	}
 
 	return resp, nil
@@ -465,4 +476,15 @@ func (transport *Transport) dialTls(ctx context.Context, conn net.Conn, host str
 			return tlsConn, nil
 		}
 	})
+}
+
+var transportHijackerKey = internal.FlagKey{Key: "transport.hijacker.key"}
+
+func WithTransportHijacker(ctx context.Context) (*TransportHijacker, context.Context) {
+	hijacker := &TransportHijacker{}
+	return hijacker, context.WithValue(ctx, transportHijackerKey, hijacker)
+}
+
+type TransportHijacker struct {
+	Conn net.Conn
 }

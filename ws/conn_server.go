@@ -8,9 +8,10 @@ import (
 	"time"
 )
 
-func newServerConn(req giglet.Request, conn net.Conn, rws *bufio.ReadWriter) *wsServerConn {
+func newServerConn(req giglet.Request, conn net.Conn, rws *bufio.ReadWriter, protocol string) *wsServerConn {
 	return &wsServerConn{
 		frameHandler: *newFrameHandler(rws, true),
+		protocol:     protocol,
 		request:      req,
 		conn:         conn,
 	}
@@ -18,8 +19,9 @@ func newServerConn(req giglet.Request, conn net.Conn, rws *bufio.ReadWriter) *ws
 
 type wsServerConn struct {
 	frameHandler
-	request giglet.Request
-	conn    net.Conn
+	protocol string
+	request  giglet.Request
+	conn     net.Conn
 }
 
 func (conn *wsServerConn) RemoteAddr() net.Addr {
@@ -28,6 +30,10 @@ func (conn *wsServerConn) RemoteAddr() net.Addr {
 
 func (conn *wsServerConn) Url() *specs.Url {
 	return conn.request.Url()
+}
+
+func (conn *wsServerConn) Protocol() string {
+	return conn.protocol
 }
 
 func (conn *wsServerConn) SetDeadline(t time.Time) error {

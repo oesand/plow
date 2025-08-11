@@ -909,3 +909,75 @@ func TestServer_PostRequestTLS(t *testing.T) {
 
 	checkHttpResponseBody(t, resp, []byte("okay"))
 }
+
+func TestServer_PanicHandling(t *testing.T) {
+	var panicHandled atomic.Bool
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
+		panic("test panic")
+	}))
+	server.ErrorHandler = ErrorHandlerFunc(func(ctx context.Context, conn net.Conn, err any) {
+		ShortResponseWriter(specs.StatusCodeInternalServerError, "panic handled").WriteTo(conn)
+		panicHandled.Store(true)
+	})
+
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go server.Serve(listener)
+
+	url := "http://" + listener.Addr().String()
+	client := &http.Client{Transport: &http.Transport{}}
+	req, _ := http.NewRequest("GET", url, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+	if resp.StatusCode != int(specs.StatusCodeInternalServerError) {
+		t.Errorf("expected status code 500, got %d", resp.StatusCode)
+	}
+
+	body := resp.Body
+	if body == nil {
+		t.Fatal("response body is nil")
+	}
+
+	defer body.Close()
+
+	data, err := io.ReadAll(body)
+	if err != nil {
+		t.Fatal("read all:", err)
+	}
+
+	if !bytes.Equal(data, []byte("panic handled")) {
+		t.Error("invalid response:", string(data))
+	}
+
+	if !panicHandled.Load() {
+		t.Fatal("panic not handled")
+	}
+}
+
+func TestServer_RequestBodyTooLarge(t *testing.T) {
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
+		return TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "ok")
+	}))
+	server.MaxBodySize = 4
+
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go server.Serve(listener)
+
+	url := "http://" + listener.Addr().String()
+	client := &http.Client{Transport: &http.Transport{}}
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer([]byte("this is a test body that is too large")))
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+	if resp.StatusCode != int(specs.StatusCodeRequestEntityTooLarge) {
+		t.Errorf("expected status code 413, go %d", resp.StatusCode)
+	}
+}

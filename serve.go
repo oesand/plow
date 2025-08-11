@@ -40,6 +40,10 @@ func (srv *Server) Serve(listener net.Listener) error {
 	}
 
 	handler := srv.Handler
+	errorHandler := srv.ErrorHandler
+	if errorHandler == nil {
+		errorHandler, _ = handler.(ErrorHandler)
+	}
 
 	srv.listenerTrack.Add(1)
 	defer srv.listenerTrack.Done()
@@ -79,8 +83,34 @@ func (srv *Server) Serve(listener net.Listener) error {
 
 		connTrack.Add(1)
 		go func() {
-			srv.handle(ctx, conn, handler)
-			connTrack.Done()
+			defer func() {
+				if err := recover(); err != nil {
+					if errorHandler != nil {
+						errorHandler.HandleError(ctx, conn, err)
+					} else {
+						conn.SetDeadline(time.Now().Add(1 * time.Second))
+						responseInternalServerError.WriteTo(conn)
+					}
+					conn.Close()
+				}
+				connTrack.Done()
+			}()
+
+			err := srv.handle(ctx, conn, handler)
+			if err != nil {
+				if errorHandler != nil {
+					errorHandler.HandleError(ctx, conn, err)
+				} else {
+					conn.SetDeadline(time.Now().Add(1 * time.Second))
+					var respErr *server.ErrorResponse
+					if errors.As(err, &respErr) {
+						respErr.WriteTo(conn)
+					} else {
+						responseInternalServerError.WriteTo(conn)
+					}
+				}
+			}
+			conn.Close()
 		}()
 	}
 
@@ -108,27 +138,23 @@ func (srv *Server) accept(ctx context.Context, listener net.Listener) (net.Conn,
 	}
 }
 
-func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
-	if srv.catchCancelled(ctx) {
-		conn.Close()
-		return
+func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) error {
+	var err error
+	if err = ctx.Err(); err != nil {
+		return err
 	}
 
 	if tlsConn, ok := conn.(*tls.Conn); ok {
-		err := catch.CallWithTimeoutContextErr(ctx, srv.TLSHandshakeTimeout, tlsConn.HandshakeContext)
+		err = catch.CallWithTimeoutContextErr(ctx, srv.TLSHandshakeTimeout, tlsConn.HandshakeContext)
 
 		if err != nil {
 			// If the handshake failed due to the client not speaking
 			// TLS, assume they're speaking plaintext HTTP and write a
 			// 400 response on the TLS conn underlying net.Conn.
 			if re, ok := err.(tls.RecordHeaderError); ok && re.Conn != nil {
-				responseErrDowngradeHTTPS.WriteTo(conn)
-				return
+				return responseErrDowngradeHTTPS
 			}
-			if srv.Debug {
-				srv.logger().Printf("giglet: tls handshake error from '%s': %v", conn.RemoteAddr(), err)
-			}
-			return
+			return err
 		}
 
 		proto := tlsConn.ConnectionState().NegotiatedProtocol
@@ -136,19 +162,10 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 		if srv.tlsNextProtos != nil {
 			if handler, ok := srv.tlsNextProtos[proto]; ok {
 				handler(tlsConn)
-				conn.Close()
-				return
+				return nil
 			}
 		}
 	}
-
-	defer func() {
-		if err := recover(); err != nil && srv.Debug {
-			srv.logger().Printf("giglet: panic serving from '%s': %v", conn.RemoteAddr(), err)
-		}
-
-		conn.Close()
-	}()
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -161,22 +178,14 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 		req, extraBuffered, err := srv.readHeader(ctx, conn)
 
 		if err != nil {
-			if srv.Debug {
-				srv.logger().Printf("giglet: read request error from '%s': %v", conn.RemoteAddr(), err)
-			}
 			if !catch.IsCommonNetReadError(err) {
-				var respErr *server.ErrorResponse
-				if errors.As(err, &respErr) {
-					respErr.WriteTo(conn)
-				} else {
-					responseErrNotProcessable.WriteTo(conn)
-				}
+				return responseErrNotProcessable
 			}
-			break
+			return err
 		}
 
-		if srv.catchCancelled(ctx) {
-			break
+		if err = ctx.Err(); err != nil {
+			return err
 		}
 
 		if req.Method().IsPostable() {
@@ -195,9 +204,10 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 						if contentLength <= 0 {
 							reader = nil
 						} else if srv.MaxBodySize > 0 && contentLength >= srv.MaxBodySize {
-							responseErrBodyTooLarge.WriteTo(conn)
-							return
+							return responseErrBodyTooLarge
 						}
+					} else {
+						return errors.New("invalid Content-Length header: " + cl)
 					}
 				}
 
@@ -215,8 +225,8 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 			req.BodyReader = reader
 		}
 
-		if srv.catchCancelled(ctx) {
-			break
+		if err = ctx.Err(); err != nil {
+			return err
 		}
 
 		resp := handler.Handle(ctx, req)
@@ -236,7 +246,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 			conn.SetReadDeadline(time.Time{})
 		}
 
-		if len(srv.ServerName) > 0 {
+		if srv.ServerName != "" {
 			header.Set("Server", srv.ServerName)
 		} else {
 			header.Set("Server", DefaultServerName)
@@ -274,9 +284,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 					var cachedBody bytes.Buffer
 					err = srv.writeBody(writable, &cachedBody, false, req.SelectedEncoding)
 					if err != nil {
-						if srv.Debug {
-							srv.logger().Printf("giglet: fail to cache encoded response '%s': %v", conn.RemoteAddr(), err)
-						}
+						return err
 					}
 					encodedContent = cachedBody.Bytes()
 					header.Set("Content-Length", strconv.Itoa(len(encodedContent)))
@@ -298,14 +306,11 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 		_, err = server.WriteResponseHead(conn, isHttp11, code, header)
 
 		if err != nil {
-			if srv.Debug {
-				srv.logger().Printf("giglet: error to send head to '%s': %v", conn.RemoteAddr(), err)
-			}
-			break
+			return err
 		}
 
-		if srv.catchCancelled(ctx) {
-			break
+		if err = ctx.Err(); err != nil {
+			return err
 		}
 
 		if encodedContent != nil {
@@ -317,18 +322,15 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 		}
 
 		if err != nil {
-			if srv.Debug {
-				srv.logger().Printf("giglet: error to send body to '%s': %v", conn.RemoteAddr(), err)
-			}
-			break
+			return err
 		}
 
 		if srv.WriteTimeout > 0 {
 			conn.SetWriteDeadline(time.Time{})
 		}
 
-		if srv.catchCancelled(ctx) {
-			break
+		if err = ctx.Err(); err != nil {
+			return err
 		} else if hijacker := req.Hijacker(); hijacker != nil {
 			hijacker(ctx, conn)
 			break
@@ -336,10 +338,8 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 			break
 		}
 	}
-}
 
-func (srv *Server) catchCancelled(ctx context.Context) bool {
-	return ctx.Err() != nil
+	return nil
 }
 
 func (srv *Server) readHeader(ctx context.Context, conn net.Conn) (*server.HttpRequest, []byte, error) {

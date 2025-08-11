@@ -7,6 +7,7 @@ import (
 	"strings"
 )
 
+// MustParseUrl is a helper function that parses a URL string and panics if it fails.
 func MustParseUrl(url string) *Url {
 	ur, err := ParseUrl(url)
 	if err != nil {
@@ -15,6 +16,7 @@ func MustParseUrl(url string) *Url {
 	return ur
 }
 
+// MustParseUrlQuery is a helper function that parses a URL string and sets the query if it is empty.
 func MustParseUrlQuery(url string, query Query) *Url {
 	obj, err := ParseUrl(url)
 	if err != nil {
@@ -26,6 +28,7 @@ func MustParseUrlQuery(url string, query Query) *Url {
 	return obj
 }
 
+// ParseUrl parses a URL string and returns a Url object.
 func ParseUrl(url string) (*Url, error) {
 	switch url {
 	case "":
@@ -213,6 +216,7 @@ func ParseUrl(url string) (*Url, error) {
 	return obj, nil
 }
 
+// Url represents URL with its components.
 type Url struct {
 	Scheme, Username, Password,
 	Host, Path, Fragment string
@@ -221,6 +225,8 @@ type Url struct {
 	Query Query
 }
 
+// String returns the string representation of the URL.
+// It constructs the URL from its components, escaping them as necessary.
 func (url *Url) String() string {
 	var builder strings.Builder
 

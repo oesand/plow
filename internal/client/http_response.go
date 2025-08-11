@@ -5,6 +5,13 @@ import (
 	"io"
 )
 
+func NewHttpClientResponse(status specs.StatusCode, header *specs.Header) *HttpClientResponse {
+	return &HttpClientResponse{
+		status: status,
+		header: header,
+	}
+}
+
 type HttpClientResponse struct {
 	status specs.StatusCode
 	header *specs.Header

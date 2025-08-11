@@ -3,6 +3,7 @@ package ws
 import (
 	"bufio"
 	"encoding/binary"
+	"errors"
 	"github.com/oesand/giglet/internal"
 	"github.com/oesand/giglet/specs"
 	"io"
@@ -32,34 +33,36 @@ func (fr *frameHandler) Alive() bool {
 	return !fr.dead
 }
 
-func (fr *frameHandler) Read(msg []byte) (int, error) {
+func (fr *frameHandler) Read(buf []byte) (int, error) {
 	fr.rmu.Lock()
 	defer fr.rmu.Unlock()
 
 	if fr.dead {
-		return 0, specs.ErrClosed
+		return -1, specs.ErrClosed
 	}
 
-	var frame *frameData
-	if fr.currentFrame != nil {
-		frame = fr.currentFrame
-	} else {
-		var err error
-		frame, err = fr.pickFrame()
+	if fr.currentFrame == nil {
+		frame, err := fr.pickFrame()
 		if err != nil {
 			return -1, err
 		}
+		if frame == nil {
+			return -1, io.EOF
+		}
+
 		fr.currentFrame = frame
 	}
 
-	i, err := frame.Read(msg)
-	if err == io.EOF || err == specs.ErrClosed {
+	i, err := fr.currentFrame.Read(buf)
+	if errors.Is(err, io.EOF) ||
+		errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, specs.ErrClosed) {
 		fr.currentFrame = nil
 	}
 	return i, err
 }
 
-func (fr *frameHandler) Write(msg []byte) error {
+func (fr *frameHandler) Write(msg []byte) (int, error) {
 	return fr.writeFrame(wsBinaryFrame, msg)
 }
 
@@ -69,18 +72,16 @@ func (fr *frameHandler) pickFrame() (*frameData, error) {
 		return nil, err
 	}
 
-	if fr.isServer {
-		// The client MUST mask all frames sent to the server.
-		if frame.MaskingKey == nil {
-			fr.WriteClose(CloseCodeProtocolError)
-			return nil, specs.ErrClosed
-		}
-	} else {
-		// The server MUST NOT mask all frames.
-		if frame.MaskingKey != nil {
-			fr.WriteClose(CloseCodeProtocolError)
-			return nil, specs.ErrClosed
-		}
+	// The client MUST mask all frames sent to the server.
+	if fr.isServer && frame.MaskingKey == nil {
+		fr.WriteClose(CloseCodeProtocolError)
+		return nil, specs.ErrProtocol
+	}
+
+	// The server MUST NOT mask all frames.
+	if !fr.isServer && frame.MaskingKey != nil {
+		fr.WriteClose(CloseCodeProtocolError)
+		return nil, specs.ErrProtocol
 	}
 
 	switch frame.Code {
@@ -92,162 +93,131 @@ func (fr *frameHandler) pickFrame() (*frameData, error) {
 		fr.dead = true
 		return nil, specs.ErrClosed
 	case wsPingFrame, wsPongFrame:
-		b := make([]byte, maxServiceFramePayloadSize)
-		n, err := io.ReadFull(frame, b)
-		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-			return nil, err
-		}
+		payload := make([]byte, maxControlPayload)
+		n, _ := io.ReadFull(frame, payload[:min(int(frame.Length), maxControlPayload)])
 		io.Copy(io.Discard, frame)
 		if frame.Code == wsPingFrame {
-			if err = fr.writeFrame(wsPongFrame, b[:n]); err != nil {
-				return nil, err
-			}
+			fr.writeFrame(wsPongFrame, payload[:n])
 		}
 		return nil, nil
+	default:
+		return nil, specs.ErrProtocol
 	}
 
-	fr.currentFrame = frame
 	return frame, nil
 }
 
 func (fr *frameHandler) readHeader() (*frameData, error) {
-	// First byte. FIN/RSV1/RSV2/RSV3/Code(4bits)
-	b, err := fr.rws.ReadByte()
+	first, err := fr.rws.ReadByte()
 	if err != nil {
 		return nil, err
 	}
 
 	var header frameData
-	header.Fin = ((b >> 7) & 1) != 0
-	header.Code = WsFrameType(b & 0x0f)
+	header.Fin = (first & 0x80) != 0
+	header.Code = wsFrameType(first & 0x0F)
 
-	for i := 0; i < 3; i++ {
-		j := uint(6 - i)
-		header.Rsv[i] = ((b >> j) & 1) != 0
-	}
-
-	var data []byte
-	data = append(data, b)
-
-	// Second byte. Mask/Payload len(7bits)
-	b, err = fr.rws.ReadByte()
+	maskAndLen, err := fr.rws.ReadByte()
 	if err != nil {
 		return nil, err
 	}
+	masked := (maskAndLen & 0x80) != 0
+	length := int64(maskAndLen & 0x7F)
 
-	mask := (b & 0x80) != 0
-	b &= 0x7f
-	lengthFields := 0
-	switch {
-	case b <= 125: // Payload length 7bits.
-		header.Length = int64(b)
-	case b == 126: // Payload length 7+16bits
-		lengthFields = 2
-	case b == 127: // Payload length 7+64bits
-		lengthFields = 8
-	}
-
-	data = append(data, b)
-
-	for i := 0; i < lengthFields; i++ {
-		b, err = fr.rws.ReadByte()
-		if err != nil {
+	switch length {
+	case 126:
+		var ext [2]byte
+		if _, err := io.ReadFull(fr.rws, ext[:]); err != nil {
 			return nil, err
 		}
-		if lengthFields == 8 && i == 0 { // MSB must be zero when 7+64 bits
-			b &= 0x7f
+		length = int64(binary.BigEndian.Uint16(ext[:]))
+	case 127:
+		var ext [8]byte
+		if _, err := io.ReadFull(fr.rws, ext[:]); err != nil {
+			return nil, err
 		}
-		data = append(data, b)
-		header.Length = header.Length*256 + int64(b)
+		length = int64(binary.BigEndian.Uint64(ext[:]))
 	}
-	if mask {
-		// Masking key. 4 bytes.
-		for i := 0; i < 4; i++ {
-			b, err = fr.rws.ReadByte()
-			if err != nil {
-				return nil, err
-			}
-			data = append(data, b)
-			header.MaskingKey = append(header.MaskingKey, b)
+
+	if masked {
+		header.MaskingKey = make([]byte, 4)
+		if _, err = io.ReadFull(fr.rws, header.MaskingKey); err != nil {
+			return nil, err
 		}
 	}
 
-	header.reader = io.LimitReader(fr.rws, header.Length)
-	header.length = len(data) + int(header.Length)
+	header.Length = length
+	header.reader = io.LimitReader(fr.rws, length)
 	return &header, nil
 }
 
-func (fr *frameHandler) writeFrame(frameType WsFrameType, payload []byte) (err error) {
+func (fr *frameHandler) writeFrame(ft wsFrameType, payload []byte) (int, error) {
 	fr.wmu.Lock()
 	defer fr.wmu.Unlock()
 
 	if fr.dead {
-		return specs.ErrClosed
+		return 0, specs.ErrClosed
 	}
 
-	var maskingKey []byte
-	if !fr.isServer {
-		maskingKey, err = newFrameMask()
-		if err != nil {
-			return err
-		}
-	}
-
-	if frameType == wsCloseFrame {
+	if ft == wsCloseFrame {
 		fr.dead = true
 	}
 
-	var header []byte
-	var b byte
-	b |= 0x80
-	b |= byte(frameType)
+	header := []byte{0x80 | byte(ft)}
+	var maskKey []byte
+	var err error
 
-	header = append(header, b)
-
-	if maskingKey != nil {
-		b = 0x80
-	} else {
-		b = 0
+	if !fr.isServer {
+		maskKey, err = newMask()
+		if err != nil {
+			return 0, err
+		}
 	}
-	lengthFields := 0
+
 	length := len(payload)
 	switch {
 	case length <= 125:
-		b |= byte(length)
+		header = append(header, byte(length)|maskBit(maskKey))
 	case length < 65536:
-		b |= 126
-		lengthFields = 2
+		header = append(header, 126|maskBit(maskKey))
+		var ext [2]byte
+		binary.BigEndian.PutUint16(ext[:], uint16(length))
+		header = append(header, ext[:]...)
 	default:
-		b |= 127
-		lengthFields = 8
+		header = append(header, 127|maskBit(maskKey))
+		var ext [8]byte
+		binary.BigEndian.PutUint64(ext[:], uint64(length))
+		header = append(header, ext[:]...)
 	}
-	header = append(header, b)
-	for i := 0; i < lengthFields; i++ {
-		j := uint((lengthFields - i - 1) * 8)
-		b = byte((length >> j) & 0xff)
-		header = append(header, b)
+
+	if maskKey != nil {
+		header = append(header, maskKey...)
 	}
-	if maskingKey != nil {
-		header = append(header, maskingKey...)
-		fr.rws.Write(header)
-		data := make([]byte, length)
-		for i := range data {
-			data[i] = payload[i] ^ maskingKey[i%4]
+
+	if _, err = fr.rws.Write(header); err != nil {
+		return 0, err
+	}
+
+	if maskKey != nil {
+		maskedPayload := make([]byte, length)
+		for i := range payload {
+			maskedPayload[i] = payload[i] ^ maskKey[i%4]
 		}
-		fr.rws.Write(data)
-		return fr.rws.Flush()
+		if _, err = fr.rws.Write(maskedPayload); err != nil {
+			return 0, err
+		}
+	} else {
+		if _, err = fr.rws.Write(payload); err != nil {
+			return 0, err
+		}
 	}
-	fr.rws.Write(header)
-	fr.rws.Write(payload)
-	return fr.rws.Flush()
+
+	return length, fr.rws.Flush()
 }
 
 func (fr *frameHandler) WriteClose(closeCode WsCloseCode) error {
-	if fr.dead {
-		return specs.ErrClosed
-	}
-
-	msg := make([]byte, 2)
-	binary.BigEndian.PutUint16(msg, uint16(closeCode))
-	return fr.writeFrame(wsCloseFrame, msg)
+	buf := make([]byte, 2)
+	binary.BigEndian.PutUint16(buf, uint16(closeCode))
+	_, err := fr.writeFrame(wsCloseFrame, buf)
+	return err
 }

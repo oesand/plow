@@ -1,6 +1,7 @@
 package giglet
 
 import (
+	"fmt"
 	"github.com/oesand/giglet/internal"
 	"github.com/oesand/giglet/specs"
 	"io"
@@ -8,10 +9,10 @@ import (
 
 func newRequest(method specs.HttpMethod, url *specs.Url) *clientRequest {
 	if !method.IsValid() {
-		panic("giglet/request: invalid method")
+		panic("invalid http method")
 	}
 	if url == nil {
-		panic("giglet/request: passed nil url")
+		panic("passed nil url")
 	}
 	return &clientRequest{
 		method: method,
@@ -75,9 +76,11 @@ func TextRequest(method specs.HttpMethod, url *specs.Url, contentType string, te
 func BufferRequest(method specs.HttpMethod, url *specs.Url, contentType string, buffer []byte) ClientRequest {
 	if method == "" {
 		method = specs.HttpMethodPost
+	} else if !method.IsPostable() {
+		panic(fmt.Sprintf("http method '%s' is not postable", method))
 	}
 	if buffer == nil {
-		panic("giglet/request: passed nil buffer")
+		panic("passed nil buffer")
 	}
 
 	req := &bufferRequest{
@@ -119,6 +122,12 @@ func (req *bufferRequest) ContentLength() int64 {
 func StreamRequest(method specs.HttpMethod, url *specs.Url, contentType string, stream io.Reader, contentLength int64) ClientRequest {
 	if method == "" {
 		method = specs.HttpMethodPost
+	} else if !method.IsPostable() {
+		panic(fmt.Sprintf("http method '%s' is not postable", method))
+	}
+
+	if stream == nil {
+		panic("passed nil stream")
 	}
 
 	req := &streamRequest{

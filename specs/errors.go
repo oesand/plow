@@ -6,6 +6,7 @@ import (
 
 var (
 	ErrClosed                  = errors.New("closed")
+	ErrProtocol                = errors.New("protocol implementation error")
 	ErrTimeout                 = errors.New("timeout")
 	ErrCancelled               = NewOpError("context", "cancelled")
 	ErrTooLarge                = NewOpError("read", "too large content")

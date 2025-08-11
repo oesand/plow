@@ -4,21 +4,22 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base64"
-	"github.com/oesand/giglet/specs"
 	"io"
+
+	"github.com/oesand/giglet/specs"
 )
 
-type WsFrameType byte
+type wsFrameType byte
 
 const (
-	wsContinuationFrame WsFrameType = 0
-	wsTextFrame         WsFrameType = 1
-	wsBinaryFrame       WsFrameType = 2
-	wsCloseFrame        WsFrameType = 8
-	wsPingFrame         WsFrameType = 9
-	wsPongFrame         WsFrameType = 10
+	wsContinuationFrame wsFrameType = 0x0
+	wsTextFrame         wsFrameType = 0x1
+	wsBinaryFrame       wsFrameType = 0x2
+	wsCloseFrame        wsFrameType = 0x8
+	wsPingFrame         wsFrameType = 0x9
+	wsPongFrame         wsFrameType = 0xA
 
-	maxServiceFramePayloadSize = 125
+	maxControlPayload = 125
 )
 
 var (
@@ -35,12 +36,19 @@ func computeAcceptKey(challengeKey []byte) string {
 	return base64.StdEncoding.EncodeToString(h.Sum(nil))
 }
 
-func newFrameMask() (maskingKey []byte, err error) {
+func newMask() (maskingKey []byte, err error) {
 	maskingKey = make([]byte, 4)
 	if _, err = io.ReadFull(rand.Reader, maskingKey); err != nil {
 		return
 	}
 	return
+}
+
+func maskBit(key []byte) byte {
+	if key != nil {
+		return 0x80
+	}
+	return 0x00
 }
 
 func newChallengeKey() (nonce []byte) {

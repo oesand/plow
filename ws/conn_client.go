@@ -8,9 +8,10 @@ import (
 	"time"
 )
 
-func newClientConn(url specs.Url, conn net.Conn, rws *bufio.ReadWriter) *wsClientConn {
+func newClientConn(url specs.Url, conn net.Conn, rws *bufio.ReadWriter, protocol string) *wsClientConn {
 	return &wsClientConn{
 		frameHandler: *newFrameHandler(rws, false),
+		protocol:     protocol,
 		url:          &url,
 		conn:         conn,
 	}
@@ -18,9 +19,10 @@ func newClientConn(url specs.Url, conn net.Conn, rws *bufio.ReadWriter) *wsClien
 
 type wsClientConn struct {
 	frameHandler
-	url    *specs.Url
-	conn   net.Conn
-	closed bool
+	protocol string
+	url      *specs.Url
+	conn     net.Conn
+	closed   bool
 }
 
 func (conn *wsClientConn) RemoteAddr() net.Addr {
@@ -29,6 +31,10 @@ func (conn *wsClientConn) RemoteAddr() net.Addr {
 
 func (conn *wsClientConn) Url() *specs.Url {
 	return conn.url
+}
+
+func (conn *wsClientConn) Protocol() string {
+	return conn.protocol
 }
 
 func (conn *wsClientConn) SetDeadline(t time.Time) error {

@@ -43,6 +43,7 @@ func ReadRequest(
 			Text: "http: invalid headline",
 		}
 	}
+
 	if protoMajor != 1 && (protoMajor != 2 || protoMinor != 0 || method != specs.MethodPreface) {
 		return nil, &ErrorResponse{
 			Code: specs.StatusCodeUnprocessableEntity,

@@ -3,7 +3,6 @@ package proxy
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/oesand/giglet/internal/client"
 	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
@@ -38,7 +37,7 @@ func DialHttps(conn net.Conn, host string, port uint16, creds *Creds) error {
 	}
 
 	if code := resp.StatusCode(); code != http.StatusOK {
-		return errors.New(fmt.Sprintf("https: invalid status code: %d %s", code, code.Detail()))
+		return errors.New("https: invalid status code: " + string(code.Formatted()))
 	}
 
 	return nil
