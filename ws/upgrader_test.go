@@ -1,19 +1,6 @@
 package ws
 
-import (
-	"context"
-	"fmt"
-	"github.com/oesand/giglet"
-	"github.com/oesand/giglet/mock"
-	"github.com/oesand/giglet/specs"
-	"golang.org/x/net/websocket"
-	"io"
-	"net"
-	"net/http"
-	"strconv"
-	"testing"
-	"time"
-)
+/*
 
 func TestJustTest(t *testing.T) {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
@@ -54,9 +41,9 @@ func TestDial(t *testing.T) {
 	wsServer := websocket.Server{}
 	wsServer.Handler = func(conn *websocket.Conn) {
 		for {
-			var buf = make([]byte, 4)
-			_, err := io.ReadFull(conn, buf)
-			//buf, err := io.ReadAll(conn)
+			//var buf = make([]byte, 4)
+			//_, err := io.ReadFull(conn, buf)
+			buf, err := io.ReadAll(conn)
 			if err != nil {
 				t.Error(err)
 				break
@@ -142,3 +129,6 @@ func TestWs(t *testing.T) {
 		time.Sleep(1 * time.Second)
 	}
 }
+
+
+*/

@@ -2,6 +2,7 @@ package internal
 
 import (
 	"io"
+	"slices"
 	"sync/atomic"
 )
 
@@ -28,7 +29,7 @@ func (rc *SeqCloser) Close() error {
 	}
 
 	var err error
-	for c := range ReverseIter(rc.closers) {
+	for _, c := range slices.Backward(rc.closers) {
 		cerr := c.Close()
 		if cerr != nil && err == nil {
 			err = cerr

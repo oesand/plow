@@ -48,7 +48,7 @@ func DialSocks5(conn net.Conn, host string, port uint16, creds *Creds) (net.Addr
 	}
 
 	if ver := buf[0]; ver != socksVersion5 {
-		return nil, errors.New(fmt.Sprintf("socks5: unexpected protocol version: %d", int(ver)))
+		return nil, fmt.Errorf("socks5: unexpected protocol version: %d", int(ver))
 	}
 
 	authMethod := buf[1]
@@ -111,10 +111,10 @@ func DialSocks5(conn net.Conn, host string, port uint16, creds *Creds) (net.Addr
 		return nil, err
 	}
 	if buf[0] != socksVersion5 {
-		return nil, errors.New(fmt.Sprintf("socks5: unexpected protocol version %d", int(buf[0])))
+		return nil, fmt.Errorf("socks5: unexpected protocol version %d", int(buf[0]))
 	}
 	if replyCode := buf[1]; replyCode != socksAuthSucceeded {
-		return nil, errors.New(fmt.Sprintf("socks5: reply error: %s", socksReplyCodeToError(replyCode)))
+		return nil, fmt.Errorf("socks5: reply error: %s", socksReplyCodeToError(replyCode))
 	}
 	if buf[2] != 0 {
 		return nil, errors.New("socks5: non-zero reserved field")
@@ -135,7 +135,7 @@ func DialSocks5(conn net.Conn, host string, port uint16, creds *Creds) (net.Addr
 		}
 		l += int(buf[0])
 	default:
-		return nil, errors.New(fmt.Sprintf("socks5: unknown address type %d", int(buf[3])))
+		return nil, fmt.Errorf("socks5: unknown address type %d", int(buf[3]))
 	}
 
 	if cap(buf) < l {

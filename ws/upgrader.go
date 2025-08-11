@@ -1,19 +1,23 @@
 package ws
 
 import (
-	"bufio"
 	"context"
 	"github.com/oesand/giglet"
 	"github.com/oesand/giglet/internal"
-	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
 	"net"
 	"strings"
+	"time"
 )
 
 // DefaultUpgrader returns a default Upgrader instance with no custom protocol selection.
 func DefaultUpgrader() *Upgrader {
-	return &Upgrader{}
+	return &Upgrader{
+		EnableCompression: true,
+		MaxFrameSize:      8 * 1024, // 8KB
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      5 * time.Second,
+	}
 }
 
 // Upgrader is used to upgrade HTTP requests to WebSocket connections.
@@ -24,6 +28,20 @@ type Upgrader struct {
 	// Sec-WebSocket-Protocol header. If nil, the first protocol from the header will
 	// be selected by default.
 	SelectProtocol func(protocols []string) string
+
+	// EnableCompression indicates whether to enable WebSocket compression.
+	//
+	// If true, the server will support the 'permessage-deflate' extension.
+	EnableCompression bool
+
+	// MaxFrameSize is the maximum size of a WebSocket frame in bytes.
+	MaxFrameSize int
+
+	// ReadTimeout indicates the maximum duration for reading messages from the WebSocket connection.
+	ReadTimeout time.Duration
+
+	// WriteTimeout indicates the maximum duration for writing messages to the WebSocket connection.
+	WriteTimeout time.Duration
 }
 
 // Upgrade upgrades an HTTP request to a WebSocket connection. It checks the request
@@ -52,6 +70,12 @@ func (upgrader *Upgrader) Upgrade(req giglet.Request, handler Handler) giglet.Re
 			"websocket: not a websocket handshake: `Sec-WebSocket-Key' header is missing or blank")
 	}
 
+	var compression bool
+	if upgrader.EnableCompression {
+		extensions := req.Header().Get("Sec-WebSocket-Extensions")
+		compression = strings.Contains(extensions, "permessage-deflate")
+	}
+
 	var challengeProtocols []string
 	protocol := strings.TrimSpace(req.Header().Get("Sec-Websocket-Protocol"))
 	if protocol != "" {
@@ -75,17 +99,22 @@ func (upgrader *Upgrader) Upgrade(req giglet.Request, handler Handler) giglet.Re
 	}
 
 	req.Hijack(func(ctx context.Context, conn net.Conn) {
-		reader := stream.DefaultBufioReaderPool.Get(conn)
-		defer stream.DefaultBufioReaderPool.Put(reader)
+		conn.SetReadDeadline(time.Time{})
 
-		writer := stream.DefaultBufioWriterPool.Get(conn)
-		defer stream.DefaultBufioWriterPool.Put(writer)
+		wsConn := newWsConn(
+			conn,
+			true,
+			compression,
 
-		rws := bufio.NewReadWriter(reader, writer)
-		wsConn := newServerConn(req, conn, rws, selectedProtocol)
+			upgrader.MaxFrameSize,
+			upgrader.ReadTimeout,
+			upgrader.WriteTimeout,
+
+			selectedProtocol,
+		)
 
 		handler(ctx, wsConn)
-		wsConn.dead = true
+		wsConn.Close()
 	})
 
 	acceptKey := computeAcceptKey([]byte(challengeKey))
@@ -94,6 +123,10 @@ func (upgrader *Upgrader) Upgrade(req giglet.Request, handler Handler) giglet.Re
 		resp.Header().Set("Upgrade", "websocket")
 		resp.Header().Set("Connection", "Upgrade")
 		resp.Header().Set("Sec-WebSocket-Accept", acceptKey)
+
+		if compression {
+			resp.Header().Set("Sec-WebSocket-Extensions", "permessage-deflate")
+		}
 
 		if selectedProtocol != "" {
 			resp.Header().Set("Sec-WebSocket-Protocol", selectedProtocol)

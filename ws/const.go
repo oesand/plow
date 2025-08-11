@@ -44,13 +44,6 @@ func newMask() (maskingKey []byte, err error) {
 	return
 }
 
-func maskBit(key []byte) byte {
-	if key != nil {
-		return 0x80
-	}
-	return 0x00
-}
-
 func newChallengeKey() (nonce []byte) {
 	key := make([]byte, 16)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {

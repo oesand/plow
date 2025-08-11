@@ -33,11 +33,11 @@ func (srv *Server) Serve(listener net.Listener) error {
 	if srv.Handler == nil {
 		panic("nil server handler")
 	}
-	srv.once.Do(srv.beforeOnce)
-
 	if srv.IsShutdown() {
 		return specs.ErrClosed
 	}
+
+	srv.once.Do(srv.beforeOnce)
 
 	handler := srv.Handler
 	errorHandler := srv.ErrorHandler
@@ -170,11 +170,15 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	for {
-		if srv.ReadTimeout > 0 {
-			conn.SetReadDeadline(time.Now().Add(srv.ReadTimeout))
-		}
+	if srv.ReadTimeout > 0 {
+		conn.SetReadDeadline(time.Now().Add(srv.ReadTimeout))
+	}
 
+	if srv.WriteTimeout > 0 {
+		conn.SetWriteDeadline(time.Now().Add(srv.WriteTimeout))
+	}
+
+	for {
 		req, extraBuffered, err := srv.readHeader(ctx, conn)
 
 		if err != nil {
@@ -239,11 +243,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 			writable, _ = resp.(BodyWriter)
 		}
 		if header == nil {
-			header = &specs.Header{}
-		}
-
-		if srv.ReadTimeout > 0 {
-			conn.SetReadDeadline(time.Time{})
+			header = specs.NewHeader()
 		}
 
 		if srv.ServerName != "" {
@@ -300,9 +300,6 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 		protoMajor, protoMinor := req.ProtoVersion()
 		isHttp11 := protoMajor == 1 && protoMinor == 1
 
-		if srv.WriteTimeout > 0 {
-			conn.SetWriteDeadline(time.Now().Add(srv.WriteTimeout))
-		}
 		_, err = server_ops.WriteResponseHead(conn, isHttp11, code, header)
 
 		if err != nil {
@@ -325,10 +322,6 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 			return err
 		}
 
-		if srv.WriteTimeout > 0 {
-			conn.SetWriteDeadline(time.Time{})
-		}
-
 		if err = ctx.Err(); err != nil {
 			return err
 		} else if hijacker := req.Hijacker(); hijacker != nil {
@@ -337,6 +330,14 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 		} else if req.Method() != specs.HttpMethodHead && writable == nil && code.IsReplyable() {
 			break
 		}
+	}
+
+	if srv.ReadTimeout > 0 {
+		conn.SetReadDeadline(time.Time{})
+	}
+
+	if srv.WriteTimeout > 0 {
+		conn.SetWriteDeadline(time.Time{})
 	}
 
 	return nil

@@ -1,20 +1,24 @@
 package ws
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"github.com/oesand/giglet"
 	"github.com/oesand/giglet/internal"
-	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
 	"slices"
 	"strings"
+	"time"
 )
 
 // DefaultDialer returns a new Dialer with default settings.
 func DefaultDialer() *Dialer {
-	return &Dialer{}
+	return &Dialer{
+		EnableCompression: true,
+		MaxFrameSize:      8 * 1024, // 8KB
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      5 * time.Second,
+	}
 }
 
 // Dialer is used to create a WebSocket connection to a server.
@@ -26,20 +30,32 @@ type Dialer struct {
 
 	// Protocols is a list of subprotocols that the client supports.
 	Protocols []string
+
+	// EnableCompression indicates whether to enable 'permessage-deflate' extension for compression.
+	EnableCompression bool
+
+	// MaxFrameSize is the maximum size of a WebSocket frame in bytes.
+	MaxFrameSize int
+
+	// ReadTimeout indicates the maximum duration for reading messages from the WebSocket connection.
+	ReadTimeout time.Duration
+
+	// WriteTimeout indicates the maximum duration for writing messages to the WebSocket connection.
+	WriteTimeout time.Duration
 }
 
 // Dial creates a WebSocket connection to the specified URL using the provided client.
-func (dialer *Dialer) Dial(client *giglet.Client, url specs.Url) (Conn, error) {
+func (dialer *Dialer) Dial(client *giglet.Client, url specs.Url, configure ...func(giglet.ClientRequest)) (Conn, error) {
 	ctx := context.Background()
-	return dialer.dial(ctx, client, &url)
+	return dialer.dial(ctx, client, &url, configure...)
 }
 
 // DialContext creates a WebSocket connection to the specified URL using the provided client and context.
-func (dialer *Dialer) DialContext(ctx context.Context, client *giglet.Client, url specs.Url) (Conn, error) {
-	return dialer.dial(ctx, client, &url)
+func (dialer *Dialer) DialContext(ctx context.Context, client *giglet.Client, url specs.Url, configure ...func(giglet.ClientRequest)) (Conn, error) {
+	return dialer.dial(ctx, client, &url, configure...)
 }
 
-func (dialer *Dialer) dial(ctx context.Context, client *giglet.Client, url *specs.Url) (Conn, error) {
+func (dialer *Dialer) dial(ctx context.Context, client *giglet.Client, url *specs.Url, configure ...func(giglet.ClientRequest)) (Conn, error) {
 	if ctx == nil {
 		panic("nil Context pointer")
 	}
@@ -70,6 +86,10 @@ func (dialer *Dialer) dial(ctx context.Context, client *giglet.Client, url *spec
 	hijacker, ctx := giglet.WithTransportHijacker(ctx)
 	req := giglet.EmptyRequest(specs.HttpMethodGet, &httpUrl)
 
+	for _, conf := range configure {
+		conf(req)
+	}
+
 	req.Header().Set("Connection", "Upgrade")
 	req.Header().Set("Upgrade", "websocket")
 	req.Header().Set("Sec-Websocket-Version", "13")
@@ -79,6 +99,10 @@ func (dialer *Dialer) dial(ctx context.Context, client *giglet.Client, url *spec
 
 	if dialer.Origin != "" {
 		req.Header().Set("Origin", dialer.Origin)
+	}
+
+	if dialer.EnableCompression {
+		req.Header().Set("Sec-WebSocket-Extensions", "permessage-deflate")
 	}
 
 	if len(dialer.Protocols) > 0 {
@@ -108,8 +132,10 @@ func (dialer *Dialer) dial(ctx context.Context, client *giglet.Client, url *spec
 		return nil, ErrFailChallenge
 	}
 
-	if resp.Header().Get("Sec-WebSocket-Extensions") != "" {
-		return nil, specs.NewOpError("ws", "unsupported extensions")
+	var compression bool
+	if dialer.EnableCompression {
+		extensions := resp.Header().Get("Sec-WebSocket-Extensions")
+		compression = strings.Contains(extensions, "permessage-deflate")
 	}
 
 	var selectedProtocol string
@@ -124,9 +150,22 @@ func (dialer *Dialer) dial(ctx context.Context, client *giglet.Client, url *spec
 		return nil, specs.NewOpError("ws", "fail to hijack connection")
 	}
 
-	reader := stream.DefaultBufioReaderPool.Get(conn)
-	writer := stream.DefaultBufioWriterPool.Get(conn)
-	rws := bufio.NewReadWriter(reader, writer)
+	err = conn.SetReadDeadline(time.Time{})
+	if err != nil {
+		return nil, err
+	}
 
-	return newClientConn(*url, conn, rws, selectedProtocol), nil
+	wsConn := newWsConn(
+		conn,
+		false,
+		compression,
+
+		dialer.MaxFrameSize,
+		dialer.ReadTimeout,
+		dialer.WriteTimeout,
+
+		selectedProtocol,
+	)
+
+	return wsConn, nil
 }
