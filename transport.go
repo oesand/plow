@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"github.com/oesand/giglet/internal"
 	"github.com/oesand/giglet/internal/catch"
-	"github.com/oesand/giglet/internal/client"
+	"github.com/oesand/giglet/internal/client_ops"
 	"github.com/oesand/giglet/internal/encoding"
 	"github.com/oesand/giglet/internal/proxy"
 	"github.com/oesand/giglet/internal/stream"
@@ -164,7 +164,7 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 		}
 	}
 
-	host := client.IdnaHost(url.Host)
+	host := client_ops.IdnaHost(url.Host)
 	if proxyUrl != nil {
 		if proxyUrl.Host == "" {
 			return nil, fmt.Errorf("invalid proxy url '%s' host", url.Host)
@@ -176,22 +176,22 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 
 		switch proxyUrl.Scheme {
 		case "http":
-			header.Set("Host", client.HostHeader(host, url.Port, true))
+			header.Set("Host", client_ops.HostHeader(host, url.Port, true))
 			if proxyUrl.Username != "" {
 				proxy.WithAuthHeader(header, proxyUrl.Username, proxyUrl.Password)
 			}
 		case "https", "socks5", "socks5h":
-			header.Set("Host", client.HostHeader(host, url.Port, false))
+			header.Set("Host", client_ops.HostHeader(host, url.Port, false))
 		default:
 			return nil, fmt.Errorf("unsupported proxy '%s' scheme", url.Scheme)
 		}
 
-		proxyUrl.Host = client.IdnaHost(proxyUrl.Host)
+		proxyUrl.Host = client_ops.IdnaHost(proxyUrl.Host)
 		if proxyUrl.Port == 0 {
 			proxyUrl.Port = proxy.SchemeDefaultPortMap[proxyUrl.Scheme]
 		}
 	} else {
-		header.Set("Host", client.HostHeader(host, url.Port, false))
+		header.Set("Host", client_ops.HostHeader(host, url.Port, false))
 	}
 
 	if !header.Has("Accept") {
@@ -272,7 +272,7 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 		conn.SetWriteDeadline(time.Now().Add(transport.WriteTimeout))
 	}
 
-	_, err = client.WriteRequestHead(conn, method, url.Path, url.Query, header)
+	_, err = client_ops.WriteRequestHead(conn, method, url.Path, url.Query, header)
 
 	if err = catch.CatchCommonErr(err); err != nil {
 		conn.Close()
@@ -316,7 +316,7 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 	headerReader := stream.DefaultBufioReaderPool.Get(conn)
 	defer stream.DefaultBufioReaderPool.Put(headerReader)
 
-	resp, err := client.ReadResponse(ctx, headerReader, transport.ReadLineMaxLength, transport.HeadMaxLength)
+	resp, err := client_ops.ReadResponse(ctx, headerReader, transport.ReadLineMaxLength, transport.HeadMaxLength)
 
 	err = catch.CatchCommonErr(err)
 	if err == nil {
@@ -420,7 +420,7 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 }
 
 func (transport *Transport) dial(ctx context.Context, host string, port uint16) (net.Conn, error) {
-	address := client.HostPort(host, port)
+	address := client_ops.HostPort(host, port)
 
 	var conn net.Conn
 	var err error

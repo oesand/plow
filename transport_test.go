@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"github.com/andybalholm/brotli"
 	"github.com/armon/go-socks5"
-	"github.com/oesand/giglet/internal/server"
+	"github.com/oesand/giglet/internal/server_ops"
 	"github.com/oesand/giglet/specs"
 	"io"
 	"net"
@@ -181,7 +181,7 @@ func TestTransport_PostChunkedTransferEncodingRequest(t *testing.T) {
 		}
 
 		reader := bufio.NewReader(conn)
-		req, err := server.ReadRequest(ctx, conn.RemoteAddr(), reader, 1024, 8024)
+		req, err := server_ops.ReadRequest(ctx, conn.RemoteAddr(), reader, 1024, 8024)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -200,7 +200,7 @@ func TestTransport_PostChunkedTransferEncodingRequest(t *testing.T) {
 			t.Errorf("expected %s, got %s", string(requestBody), string(b))
 		}
 
-		server.WriteResponseHead(conn, true, specs.StatusCodeOK, specs.NewHeader())
+		server_ops.WriteResponseHead(conn, true, specs.StatusCodeOK, specs.NewHeader())
 		conn.Write([]byte("received"))
 		conn.Close()
 	}()

@@ -1,4 +1,4 @@
-package client
+package client_ops
 
 import (
 	"golang.org/x/net/idna"

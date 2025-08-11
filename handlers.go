@@ -3,13 +3,13 @@ package giglet
 import (
 	"context"
 	"crypto/tls"
-	"github.com/oesand/giglet/internal/server"
+	"github.com/oesand/giglet/internal/server_ops"
 	"github.com/oesand/giglet/specs"
 	"net"
 )
 
 // HijackHandler function that allow an [Handler] to take over the connection.
-type HijackHandler = server.HijackHandler
+type HijackHandler = server_ops.HijackHandler
 
 // NextProtoHandler function to take over ownership
 // of the provided TLS connection when an ALPN

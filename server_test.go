@@ -7,9 +7,9 @@ import (
 	"context"
 	"crypto/tls"
 	"github.com/andybalholm/brotli"
-	"github.com/oesand/giglet/internal/client"
+	"github.com/oesand/giglet/internal/client_ops"
 	"github.com/oesand/giglet/internal/encoding"
-	"github.com/oesand/giglet/internal/server"
+	"github.com/oesand/giglet/internal/server_ops"
 	"github.com/oesand/giglet/mock"
 	"github.com/oesand/giglet/specs"
 	"io"
@@ -147,7 +147,7 @@ func TestServer_SendAnyResponse(t *testing.T) {
 
 func TestServer_ChunkedTransferEncodingTwoWays(t *testing.T) {
 	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
-		req := request.(*server.HttpRequest)
+		req := request.(*server_ops.HttpRequest)
 		if request.Header().Get("X-Hello-World") != "xyz-123" ||
 			request.Header().Get("Transfer-Encoding") != "chunked" {
 			t.Errorf("not found expected headers, %+v", request.Header())
@@ -809,7 +809,7 @@ func TestServer_FilterConn(t *testing.T) {
 
 	url := specs.MustParseUrl(listener.Addr().String())
 
-	address := client.HostPort(url.Host, url.Port)
+	address := client_ops.HostPort(url.Host, url.Port)
 
 	conn, err := defaultDialer.Dial("tcp", address)
 	if err != nil {

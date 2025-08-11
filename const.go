@@ -1,7 +1,7 @@
 package giglet
 
 import (
-	"github.com/oesand/giglet/internal/server"
+	"github.com/oesand/giglet/internal/server_ops"
 	"github.com/oesand/giglet/specs"
 	"io"
 	"net"
@@ -27,19 +27,19 @@ var (
 		KeepAlive: 10 * time.Second,
 	}
 
-	responseErrDowngradeHTTPS = &server.ErrorResponse{
+	responseErrDowngradeHTTPS = &server_ops.ErrorResponse{
 		Code: specs.StatusCodeBadRequest,
 		Text: "http: sent an HTTP request to an HTTPS server.",
 	}
-	responseErrNotProcessable = &server.ErrorResponse{
+	responseErrNotProcessable = &server_ops.ErrorResponse{
 		Code: specs.StatusCodeUnprocessableEntity,
 		Text: "http: the request could not be processed.",
 	}
-	responseErrBodyTooLarge = &server.ErrorResponse{
+	responseErrBodyTooLarge = &server_ops.ErrorResponse{
 		Code: specs.StatusCodeRequestEntityTooLarge,
 		Text: "http: too large body",
 	}
-	responseInternalServerError = &server.ErrorResponse{
+	responseInternalServerError = &server_ops.ErrorResponse{
 		Code: specs.StatusCodeInternalServerError,
 		Text: "http: internal server error",
 	}
@@ -52,7 +52,7 @@ var (
 // and status codes across the application. The returned object implements io.WriterTo, allowing it to be
 // written directly to an io.Writer, such as net.Conn.
 func ShortResponseWriter(code specs.StatusCode, text string) io.WriterTo {
-	return &server.ErrorResponse{
+	return &server_ops.ErrorResponse{
 		Code: code,
 		Text: text,
 	}

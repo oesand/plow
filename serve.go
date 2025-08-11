@@ -7,7 +7,7 @@ import (
 	"errors"
 	"github.com/oesand/giglet/internal/catch"
 	"github.com/oesand/giglet/internal/encoding"
-	"github.com/oesand/giglet/internal/server"
+	"github.com/oesand/giglet/internal/server_ops"
 	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
 	"io"
@@ -102,7 +102,7 @@ func (srv *Server) Serve(listener net.Listener) error {
 					errorHandler.HandleError(ctx, conn, err)
 				} else {
 					conn.SetDeadline(time.Now().Add(1 * time.Second))
-					var respErr *server.ErrorResponse
+					var respErr *server_ops.ErrorResponse
 					if errors.As(err, &respErr) {
 						respErr.WriteTo(conn)
 					} else {
@@ -303,7 +303,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 		if srv.WriteTimeout > 0 {
 			conn.SetWriteDeadline(time.Now().Add(srv.WriteTimeout))
 		}
-		_, err = server.WriteResponseHead(conn, isHttp11, code, header)
+		_, err = server_ops.WriteResponseHead(conn, isHttp11, code, header)
 
 		if err != nil {
 			return err
@@ -342,11 +342,11 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 	return nil
 }
 
-func (srv *Server) readHeader(ctx context.Context, conn net.Conn) (*server.HttpRequest, []byte, error) {
+func (srv *Server) readHeader(ctx context.Context, conn net.Conn) (*server_ops.HttpRequest, []byte, error) {
 	headerReader := stream.DefaultBufioReaderPool.Get(conn)
 	defer stream.DefaultBufioReaderPool.Put(headerReader)
 
-	req, err := server.ReadRequest(ctx, conn.RemoteAddr(), headerReader, srv.ReadLineMaxLength, srv.HeadMaxLength)
+	req, err := server_ops.ReadRequest(ctx, conn.RemoteAddr(), headerReader, srv.ReadLineMaxLength, srv.HeadMaxLength)
 
 	if err != nil {
 		return nil, nil, err

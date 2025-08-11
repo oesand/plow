@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"context"
 	"github.com/oesand/giglet/internal"
-	"github.com/oesand/giglet/internal/client"
-	"github.com/oesand/giglet/internal/server"
+	"github.com/oesand/giglet/internal/client_ops"
+	"github.com/oesand/giglet/internal/server_ops"
 	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
 	"io"
@@ -95,7 +95,7 @@ func newTestServer(handler func(req Request) (specs.StatusCode, *specs.Header, [
 		headerReader := stream.DefaultBufioReaderPool.Get(conn)
 		defer stream.DefaultBufioReaderPool.Put(headerReader)
 
-		req, err := server.ReadRequest(ctx, listener.Addr(), headerReader, 1024, 8*1024)
+		req, err := server_ops.ReadRequest(ctx, listener.Addr(), headerReader, 1024, 8*1024)
 		if err != nil {
 			panic(err)
 		}
@@ -106,7 +106,7 @@ func newTestServer(handler func(req Request) (specs.StatusCode, *specs.Header, [
 		if header == nil {
 			header = specs.NewHeader()
 		}
-		server.WriteResponseHead(conn, true, code, header)
+		server_ops.WriteResponseHead(conn, true, code, header)
 		if body != nil {
 			conn.Write(body)
 		}
@@ -128,14 +128,14 @@ func newTestServer(handler func(req Request) (specs.StatusCode, *specs.Header, [
 }
 
 func newTestClientSend(method specs.HttpMethod, url *specs.Url, header *specs.Header, body []byte) (ClientResponse, net.Conn, error) {
-	address := client.HostPort(url.Host, url.Port)
+	address := client_ops.HostPort(url.Host, url.Port)
 	conn, err := defaultDialer.Dial("tcp", address)
 	if err != nil {
 		return nil, nil, err
 	}
 	conn.SetDeadline(time.Now().Add(20 * time.Second))
 
-	_, err = client.WriteRequestHead(conn, method, url.Path, url.Query, header)
+	_, err = client_ops.WriteRequestHead(conn, method, url.Path, url.Query, header)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -149,7 +149,7 @@ func newTestClientSend(method specs.HttpMethod, url *specs.Url, header *specs.He
 
 	headerReader := bufio.NewReader(conn)
 
-	resp, err := client.ReadResponse(context.Background(), headerReader, 1024, 8*1024)
+	resp, err := client_ops.ReadResponse(context.Background(), headerReader, 1024, 8*1024)
 	if err != nil {
 		return nil, nil, err
 	}

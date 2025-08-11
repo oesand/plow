@@ -1,4 +1,4 @@
-package server
+package server_ops
 
 import (
 	"github.com/oesand/giglet/specs"
