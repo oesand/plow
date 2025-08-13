@@ -10,7 +10,7 @@ import (
 	"github.com/oesand/giglet/internal/client_ops"
 	"github.com/oesand/giglet/internal/encoding"
 	"github.com/oesand/giglet/internal/server_ops"
-	"github.com/oesand/giglet/mock"
+	"github.com/oesand/giglet/internal/testing_ops"
 	"github.com/oesand/giglet/specs"
 	"io"
 	"net"
@@ -839,7 +839,7 @@ func TestServer_GetRequestTLS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	go server.ServeTLSRaw(listener, mock.NewTlsCert())
+	go server.ServeTLSRaw(listener, testing_ops.NewTlsCert())
 
 	url := "https://" + listener.Addr().String()
 
@@ -885,7 +885,7 @@ func TestServer_PostRequestTLS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	go server.ServeTLSRaw(listener, mock.NewTlsCert())
+	go server.ServeTLSRaw(listener, testing_ops.NewTlsCert())
 
 	url := "https://" + listener.Addr().String()
 

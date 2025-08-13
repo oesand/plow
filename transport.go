@@ -258,7 +258,8 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 	}
 
 	if url.Scheme == "https" {
-		conn, err = transport.dialTls(ctx, conn, host)
+		var tlsConn net.Conn
+		tlsConn, err = transport.dialTls(ctx, conn, host)
 		if err = catch.CatchCommonErr(err); err != nil {
 			conn.Close()
 			return nil, &specs.GigletError{
@@ -266,6 +267,7 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 				Err: err,
 			}
 		}
+		conn = tlsConn
 	}
 
 	if transport.WriteTimeout > 0 {

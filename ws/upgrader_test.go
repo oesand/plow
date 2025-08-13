@@ -1,18 +1,35 @@
 package ws
 
-/*
+import (
+	"context"
+	"fmt"
+	"github.com/oesand/giglet"
+	"github.com/oesand/giglet/internal/testing_ops"
+	"github.com/oesand/giglet/specs"
+	"io"
+	"net"
+	"strconv"
+	"testing"
+	"time"
+)
 
 func TestJustTest(t *testing.T) {
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	listener, err := net.Listen("tcp4", "127.0.0.1:58060")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	server := giglet.DefaultServer(giglet.HandlerFunc(func(ctx context.Context, request giglet.Request) giglet.Response {
 		return DefaultUpgrader().Upgrade(request, func(ctx context.Context, conn Conn) {
+			fmt.Printf("New connection from %s\n", conn.RemoteAddr().String())
+			fmt.Printf("Compression: %v \n", conn.(*wsConn).compressEnabled)
 			for conn.Alive() {
 				buf, err := io.ReadAll(conn)
 				if err != nil {
+					if err == specs.ErrTimeout {
+						time.Sleep(1 * time.Second)
+						continue
+					}
 					t.Error(err)
 					break
 				}
@@ -23,11 +40,13 @@ func TestJustTest(t *testing.T) {
 	}))
 
 	t.Logf("Listening on %s", listener.Addr().String())
-	err = server.ServeTLSRaw(listener, mock.NewTlsCert())
+	err = server.ServeTLSRaw(listener, testing_ops.NewTlsCert())
 	if err != nil {
 		t.Fatal(err)
 	}
 }
+
+/*
 
 func TestDial(t *testing.T) {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
@@ -41,9 +60,9 @@ func TestDial(t *testing.T) {
 	wsServer := websocket.Server{}
 	wsServer.Handler = func(conn *websocket.Conn) {
 		for {
-			//var buf = make([]byte, 4)
-			//_, err := io.ReadFull(conn, buf)
-			buf, err := io.ReadAll(conn)
+			var buf = make([]byte, 4)
+			_, err := io.ReadFull(conn, buf)
+			//buf, err := io.ReadAll(conn)
 			if err != nil {
 				t.Error(err)
 				break
@@ -96,8 +115,16 @@ func TestDial(t *testing.T) {
 	}
 }
 
+*/
+
 func TestWs(t *testing.T) {
-	conn, err := websocket.Dial("wss://ws.postman-echo.com/raw", "", "http://localhost/")
+	//conn, err := websocket.Dial("wss://ws.postman-echo.com/raw", "", "http://localhost/")
+	//if err != nil {
+	//	t.Fatal(err)
+	//}
+
+	url := specs.MustParseUrl("wss://ws.postman-echo.com/raw")
+	conn, err := new(Dialer).Dial(giglet.DefaultClient(), url)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,6 +156,3 @@ func TestWs(t *testing.T) {
 		time.Sleep(1 * time.Second)
 	}
 }
-
-
-*/

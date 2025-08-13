@@ -738,8 +738,6 @@ func TestTransport_HttpsProxy(t *testing.T) {
 	var connectedProxy atomic.Bool
 
 	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Logf("HTTPS Tunnel: CONNECT %s\n", r.Host)
-
 		destConn, err := net.Dial("tcp", r.Host)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusServiceUnavailable)

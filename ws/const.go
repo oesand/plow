@@ -36,20 +36,12 @@ func computeAcceptKey(challengeKey []byte) string {
 	return base64.StdEncoding.EncodeToString(h.Sum(nil))
 }
 
-func newMask() (maskingKey []byte, err error) {
-	maskingKey = make([]byte, 4)
-	if _, err = io.ReadFull(rand.Reader, maskingKey); err != nil {
-		return
-	}
-	return
-}
-
-func newChallengeKey() (nonce []byte) {
+func newChallengeKey() []byte {
 	key := make([]byte, 16)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		panic(err)
 	}
-	nonce = make([]byte, 24)
+	nonce := make([]byte, 24)
 	base64.StdEncoding.Encode(nonce, key)
-	return
+	return nonce
 }

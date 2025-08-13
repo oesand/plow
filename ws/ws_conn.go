@@ -2,8 +2,7 @@ package ws
 
 import (
 	"bufio"
-	"bytes"
-	"compress/flate"
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"github.com/oesand/giglet/internal"
@@ -20,7 +19,7 @@ import (
 func newWsConn(
 	conn net.Conn,
 	isServer bool,
-	compress bool,
+	compressEnabled bool,
 
 	maxFrameSize int,
 	readTimeout time.Duration,
@@ -35,8 +34,8 @@ func newWsConn(
 		conn: conn,
 		rws:  rws,
 
-		isServer: isServer,
-		compress: compress,
+		isServer:        isServer,
+		compressEnabled: compressEnabled,
 
 		maxFrameSize: maxFrameSize,
 		readTimeout:  readTimeout,
@@ -52,8 +51,8 @@ type wsConn struct {
 	conn net.Conn
 	rws  *bufio.ReadWriter
 
-	isServer bool
-	compress bool
+	isServer        bool
+	compressEnabled bool
 
 	maxFrameSize int
 	readTimeout  time.Duration
@@ -61,10 +60,11 @@ type wsConn struct {
 
 	protocol string
 
-	closed        bool
-	dead          bool
-	currentFrame  *frameData
-	continueFrame bool
+	closed bool
+	dead   bool
+
+	continuedFrame *frameHeader
+	currentReader  io.Reader
 
 	mu sync.Mutex
 }
@@ -83,37 +83,46 @@ func (conn *wsConn) Read(buf []byte) (int, error) {
 	defer conn.mu.Unlock()
 
 	if conn.dead {
-		return -1, specs.ErrClosed
+		return 0, specs.ErrClosed
 	}
 
 	err := conn.applyTimeout()
 	if err != nil {
-		return -1, err
+		return 0, err
 	}
 
-	if conn.currentFrame == nil {
-		frame, err := conn.pickFrame()
+	if conn.currentReader == nil {
+		header, err := conn.readHeader()
+
 		if err != nil {
-			return -1, err
+			return 0, catch.CatchCommonErr(err)
 		}
-		if frame == nil {
-			return -1, io.EOF
-		}
-		if (conn.continueFrame && frame.Code != wsContinuationFrame) ||
-			(!conn.continueFrame && frame.Code == wsContinuationFrame) {
-			conn.writeClose(CloseCodeProtocolError)
-			return -1, specs.ErrProtocol
+		if header == nil {
+			return 0, io.EOF
 		}
 
-		conn.continueFrame = !frame.Fin
-		conn.currentFrame = frame
+		if (conn.continuedFrame != nil && header.Type != wsContinuationFrame) ||
+			(conn.continuedFrame == nil && header.Type == wsContinuationFrame) {
+			conn.writeClose(CloseCodeProtocolError)
+			return 0, specs.ErrProtocol
+		}
+
+		decompress := header.Rsv1Flag || (conn.continuedFrame != nil && conn.continuedFrame.Rsv1Flag)
+		conn.currentReader = framePayloadReader(conn.rws.Reader, header.Length, header.MaskingKey, decompress)
+
+		if !header.Fin {
+			conn.continuedFrame = header
+		} else {
+			conn.continuedFrame = nil
+		}
 	}
 
-	i, err := conn.currentFrame.Read(buf)
+	i, err := conn.currentReader.Read(buf)
+
 	if errors.Is(err, io.EOF) ||
 		errors.Is(err, io.ErrUnexpectedEOF) ||
 		errors.Is(err, specs.ErrClosed) {
-		conn.currentFrame = nil
+		conn.currentReader = nil
 	}
 
 	return i, catch.CatchCommonErr(err)
@@ -140,21 +149,23 @@ func (conn *wsConn) Write(msg []byte) (int, error) {
 			if i == 0 {
 				length, err = conn.writeFrame(wsBinaryFrame, chunk, false)
 				if err != nil {
-					return 0, err
+					return 0, catch.CatchCommonErr(err)
 				}
 				continue
 			}
 
 			n, err := conn.writeFrame(wsContinuationFrame, chunk, i == len(chunks)-1)
 			if err != nil {
-				return 0, err
+				return 0, catch.CatchCommonErr(err)
 			}
 			length += n
 		}
 
 		return length, nil
 	}
-	return conn.writeFrame(wsBinaryFrame, msg, true)
+
+	n, err := conn.writeFrame(wsBinaryFrame, msg, true)
+	return n, catch.CatchCommonErr(err)
 }
 
 func (conn *wsConn) WriteClose(closeCode WsCloseCode) error {
@@ -218,195 +229,108 @@ func (conn *wsConn) applyTimeout() error {
 	return nil
 }
 
-func (conn *wsConn) pickFrame() (*frameData, error) {
-	frame, err := conn.readHeader()
+func (conn *wsConn) readHeader() (*frameHeader, error) {
+	header, err := readFrameHeader(conn.rws.Reader)
 	if err != nil {
 		return nil, err
-	}
-
-	switch frame.Code {
-	case wsContinuationFrame, wsTextFrame, wsBinaryFrame:
-		break
-	case wsCloseFrame:
-		conn.dead = true
-		return nil, specs.ErrClosed
-	case wsPingFrame, wsPongFrame:
-		if !frame.Fin {
-			conn.writeClose(CloseCodeProtocolError)
-			return nil, specs.ErrProtocol
-		}
-		if frame.Code == wsPingFrame {
-			payload := make([]byte, min(frame.Length, maxControlPayload))
-			n, _ := io.ReadFull(frame, payload)
-			conn.writeFrame(wsPongFrame, payload[:n], true)
-		}
-		io.Copy(io.Discard, frame)
-		return nil, nil
-	default:
-		return nil, specs.ErrProtocol
-	}
-
-	return frame, nil
-}
-
-func (conn *wsConn) readHeader() (*frameData, error) {
-	first, err := conn.rws.ReadByte()
-	if err != nil {
-		return nil, err
-	}
-
-	var header frameData
-	header.Fin = (first & 0x80) != 0
-	header.Code = wsFrameType(first & 0x0F)
-
-	maskAndLen, err := conn.rws.ReadByte()
-	if err != nil {
-		return nil, err
-	}
-	masked := (maskAndLen & 0x80) != 0
-	length := int(maskAndLen & 0x7F)
-
-	switch length {
-	case 126:
-		var ext [2]byte
-		if _, err := io.ReadFull(conn.rws, ext[:]); err != nil {
-			return nil, err
-		}
-		length = int(binary.BigEndian.Uint16(ext[:]))
-	case 127:
-		var ext [8]byte
-		if _, err := io.ReadFull(conn.rws, ext[:]); err != nil {
-			return nil, err
-		}
-		length = int(binary.BigEndian.Uint64(ext[:]))
-	}
-
-	if conn.maxFrameSize > 0 && length > conn.maxFrameSize {
-		conn.writeClose(CloseCodeMessageTooBig)
-		return nil, specs.ErrTooLarge
-	}
-
-	var maskingKey []byte
-	if masked {
-		maskingKey = make([]byte, 4)
-		if _, err = io.ReadFull(conn.rws, maskingKey); err != nil {
-			return nil, err
-		}
 	}
 
 	// The client MUST mask all frames sent to the server.
-	if conn.isServer && maskingKey == nil {
+	if conn.isServer && header.MaskingKey == nil {
 		conn.writeClose(CloseCodeProtocolError)
 		return nil, specs.ErrProtocol
 	}
 
 	// The server MUST NOT mask all frames.
-	if !conn.isServer && maskingKey != nil {
+	if !conn.isServer && header.MaskingKey != nil {
 		conn.writeClose(CloseCodeProtocolError)
 		return nil, specs.ErrProtocol
 	}
 
-	header.Length = length
-	reader := unmaskReader(conn.rws, int64(length), maskingKey)
-
-	if conn.compress {
-		reader = flate.NewReader(reader)
+	if conn.maxFrameSize > 0 && header.Length > conn.maxFrameSize {
+		conn.writeClose(CloseCodeMessageTooBig)
+		return nil, specs.ErrTooLarge
 	}
 
-	header.Reader = reader
-	return &header, nil
+	switch header.Type {
+	case wsContinuationFrame:
+		if header.Rsv1Flag || header.Rsv2Flag || header.Rsv3Flag {
+			conn.writeClose(CloseCodeProtocolError)
+			return nil, specs.ErrProtocol
+		}
+		break
+	case wsTextFrame, wsBinaryFrame:
+		break
+	case wsCloseFrame:
+		conn.dead = true
+		return nil, specs.ErrClosed
+	case wsPingFrame, wsPongFrame:
+		if !header.Fin || header.Rsv1Flag || header.Rsv2Flag || header.Rsv3Flag {
+			conn.writeClose(CloseCodeProtocolError)
+			return nil, specs.ErrProtocol
+		}
+		if header.Type == wsPingFrame {
+			maxlen := min(header.Length, maxControlPayload)
+			payload := make([]byte, maxlen)
+			reader := framePayloadReader(conn.rws.Reader, maxlen, header.MaskingKey, false)
+			n, _ := io.ReadFull(reader, payload)
+			conn.writeFrame(wsPongFrame, payload[:n], true)
+		}
+		io.Copy(io.Discard, conn.rws.Reader)
+		return nil, nil
+	default:
+		conn.writeClose(CloseCodeProtocolError)
+		return nil, specs.ErrProtocol
+	}
+
+	return header, nil
 }
 
 func (conn *wsConn) writeFrame(ft wsFrameType, payload []byte, final bool) (int, error) {
-	if conn.dead {
-		return 0, specs.ErrClosed
-	}
-
-	if ft == wsCloseFrame {
-		conn.dead = true
-	}
-
-	first := byte(ft)
-	if final {
-		first |= 0x80
-	}
-	if conn.compress {
-		first |= 1 << 6 // Set RSV1 bit for compression
-	}
-
-	header := []byte{first}
-
-	var maskKey []byte
-	var maskBit byte
+	var maskingKey []byte
 	var err error
 
 	if !conn.isServer {
-		maskKey, err = newMask()
-		if err != nil {
+		maskingKey = make([]byte, 4)
+		if _, err = io.ReadFull(rand.Reader, maskingKey); err != nil {
 			return 0, err
 		}
-		maskBit = 0x80
 	}
 
-	if conn.compress {
-		var buf bytes.Buffer
-		fw, err := flate.NewWriter(&buf, flate.BestSpeed)
-		if err != nil {
-			return 0, err
-		}
-		if _, err = fw.Write(payload); err != nil {
-			return 0, err
-		}
-		if err = fw.Close(); err != nil {
-			return 0, err
-		}
-		payload = buf.Bytes()
-	}
-
-	length := len(payload)
-	switch {
-	case length <= 125:
-		header = append(header, byte(length)|maskBit)
-	case length < 65536:
-		header = append(header, 126|maskBit)
-		var ext [2]byte
-		binary.BigEndian.PutUint16(ext[:], uint16(length))
-		header = append(header, ext[:]...)
-	default:
-		header = append(header, 127|maskBit)
-		var ext [8]byte
-		binary.BigEndian.PutUint64(ext[:], uint64(length))
-		header = append(header, ext[:]...)
-	}
-
-	if maskKey != nil {
-		header = append(header, maskKey...)
-	}
-
-	if _, err = conn.rws.Write(header); err != nil {
+	mustCompress := conn.compressEnabled && (ft == wsBinaryFrame || ft == wsTextFrame || ft == wsContinuationFrame)
+	preparedPayload, err := prepareFramePayload(maskingKey, mustCompress, payload)
+	if err != nil {
 		return 0, err
 	}
 
-	if maskKey != nil {
-		maskedPayload := make([]byte, length)
-		for i := range payload {
-			maskedPayload[i] = payload[i] ^ maskKey[i%4]
-		}
-		if _, err = conn.rws.Write(maskedPayload); err != nil {
-			return 0, err
-		}
-	} else {
-		if _, err = conn.rws.Write(payload); err != nil {
-			return 0, err
-		}
+	header := &frameHeader{
+		Fin:        final,
+		Type:       ft,
+		Rsv1Flag:   mustCompress && ft != wsContinuationFrame,
+		Length:     len(preparedPayload),
+		MaskingKey: maskingKey,
 	}
 
-	return length, conn.rws.Flush()
+	preparedHeader := prepareFrameHeader(header)
+	_, err = conn.rws.Write(preparedHeader)
+	if err != nil {
+		return 0, err
+	}
+
+	if _, err = conn.rws.Write(preparedPayload); err != nil {
+		return 0, err
+	}
+
+	err = conn.rws.Flush()
+	if err != nil {
+		return 0, err
+	}
+
+	return header.Length, nil
 }
 
 func (conn *wsConn) writeClose(closeCode WsCloseCode) error {
-	buf := make([]byte, 2)
-	binary.BigEndian.PutUint16(buf, uint16(closeCode))
+	buf := binary.BigEndian.AppendUint16(nil, uint16(closeCode))
 	_, err := conn.writeFrame(wsCloseFrame, buf, true)
 	return err
 }

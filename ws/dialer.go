@@ -45,14 +45,14 @@ type Dialer struct {
 }
 
 // Dial creates a WebSocket connection to the specified URL using the provided client.
-func (dialer *Dialer) Dial(client *giglet.Client, url specs.Url, configure ...func(giglet.ClientRequest)) (Conn, error) {
+func (dialer *Dialer) Dial(client *giglet.Client, url *specs.Url, configure ...func(giglet.ClientRequest)) (Conn, error) {
 	ctx := context.Background()
-	return dialer.dial(ctx, client, &url, configure...)
+	return dialer.dial(ctx, client, url, configure...)
 }
 
 // DialContext creates a WebSocket connection to the specified URL using the provided client and context.
-func (dialer *Dialer) DialContext(ctx context.Context, client *giglet.Client, url specs.Url, configure ...func(giglet.ClientRequest)) (Conn, error) {
-	return dialer.dial(ctx, client, &url, configure...)
+func (dialer *Dialer) DialContext(ctx context.Context, client *giglet.Client, url *specs.Url, configure ...func(giglet.ClientRequest)) (Conn, error) {
+	return dialer.dial(ctx, client, url, configure...)
 }
 
 func (dialer *Dialer) dial(ctx context.Context, client *giglet.Client, url *specs.Url, configure ...func(giglet.ClientRequest)) (Conn, error) {

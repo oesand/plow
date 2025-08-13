@@ -1,14 +1,10 @@
-package mock
+package testing_ops
 
 import (
 	"crypto/tls"
 	"fmt"
 )
 
-// LocalhostCert is a PEM-encoded TLS cert with SAN IPs
-// "127.0.0.1" and "[::1]", expiring at Jan 29 16:00:00 2084 GMT.
-// generated from src/crypto/tls:
-// go run generate_cert.go  --rsa-bits 2048 --host 127.0.0.1,::1,example.com --ca --start-date "Jan 1 00:00:00 1970" --duration=1000000h
 var LocalhostCert = []byte(`-----BEGIN CERTIFICATE-----
 MIIDOTCCAiGgAwIBAgIQSRJrEpBGFc7tNb1fb5pKFzANBgkqhkiG9w0BAQsFADAS
 MRAwDgYDVQQKEwdBY21lIENvMCAXDTcwMDEwMTAwMDAwMFoYDzIwODQwMTI5MTYw
@@ -30,7 +26,6 @@ grw/ZQTTIVjjh4JBSW3WyWgNo/ikC1lrVxzl4iPUGptxT36Cr7Zk2Bsg0XqwbOvK
 WkBKOclmOV2xlTVuPw==
 -----END CERTIFICATE-----`)
 
-// LocalhostCertKey is the private key for LocalhostCert.
 var LocalhostCertKey = []byte(`-----BEGIN RSA PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDoZtrm0dXV0Aqi
 4Bpc7f95sNRTiu/AJSD8I1onY9PnEsPg3VVxvytsVJbYdcqr4w99V3AgpH/UNzMS
@@ -60,7 +55,6 @@ xiUZS4SoaJq6ZvcBYS62Yr1t8n09iG47YL8ibgtmH3L+svaotvpVxVK+d7BLevA/
 ZboOWVe3icTy64BT3OQhmg==
 -----END RSA PRIVATE KEY-----`)
 
-// NewTlsCert Create new tls.Certificate based on LocalhostCert and LocalhostCertKey
 func NewTlsCert() tls.Certificate {
 	cert, err := tls.X509KeyPair(LocalhostCert, LocalhostCertKey)
 	if err != nil {

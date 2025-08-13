@@ -99,7 +99,7 @@ func (upgrader *Upgrader) Upgrade(req giglet.Request, handler Handler) giglet.Re
 	}
 
 	req.Hijack(func(ctx context.Context, conn net.Conn) {
-		conn.SetReadDeadline(time.Time{})
+		conn.SetDeadline(time.Time{})
 
 		wsConn := newWsConn(
 			conn,
