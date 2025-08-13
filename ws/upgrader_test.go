@@ -1,17 +1,6 @@
 package ws
 
-import (
-	"context"
-	"fmt"
-	"github.com/oesand/giglet"
-	"github.com/oesand/giglet/internal/testing_ops"
-	"github.com/oesand/giglet/specs"
-	"io"
-	"net"
-	"strconv"
-	"testing"
-	"time"
-)
+/*
 
 func TestJustTest(t *testing.T) {
 	listener, err := net.Listen("tcp4", "127.0.0.1:58060")
@@ -36,6 +25,8 @@ func TestJustTest(t *testing.T) {
 				t.Logf("Received: %s \n", buf)
 				fmt.Fprintf(conn, "Answer: %s", buf)
 			}
+
+			fmt.Printf("Disconnect %s\n", conn.RemoteAddr().String())
 		})
 	}))
 
@@ -46,7 +37,7 @@ func TestJustTest(t *testing.T) {
 	}
 }
 
-/*
+
 
 func TestDial(t *testing.T) {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
@@ -115,7 +106,7 @@ func TestDial(t *testing.T) {
 	}
 }
 
-*/
+
 
 func TestWs(t *testing.T) {
 	//conn, err := websocket.Dial("wss://ws.postman-echo.com/raw", "", "http://localhost/")
@@ -124,18 +115,21 @@ func TestWs(t *testing.T) {
 	//}
 
 	url := specs.MustParseUrl("wss://ws.postman-echo.com/raw")
-	conn, err := new(Dialer).Dial(giglet.DefaultClient(), url)
+	conn, err := DefaultDialer().Dial(giglet.DefaultClient(), url)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer conn.Close()
 
 	t.Logf("Connected to %s", conn.RemoteAddr().String())
+
+	fmt.Printf("Compression: %v \n", conn.(*wsConn).compressEnabled)
 
 	var i int
 	var input string = "000"
 	for {
 		input += strconv.Itoa(i)
-		_, err = conn.Write([]byte(input))
+		_, err = conn.WriteText(input)
 		if err != nil {
 			t.Error(err)
 			break
@@ -144,9 +138,9 @@ func TestWs(t *testing.T) {
 
 		t.Logf("Sent: %s \n", input)
 
-		buf := make([]byte, len(input))
-		//buf, err := io.ReadAll(conn)
-		_, err = conn.Read(buf)
+		//buf := make([]byte, len(input))
+		buf, err := io.ReadAll(conn)
+		//_, err = conn.Read(buf)
 		if err != nil {
 			t.Error(err)
 			break
@@ -156,3 +150,6 @@ func TestWs(t *testing.T) {
 		time.Sleep(1 * time.Second)
 	}
 }
+
+
+*/

@@ -16,14 +16,14 @@ type frameHeader struct {
 }
 
 func readFrameHeader(reader io.Reader) (*frameHeader, error) {
-	var twoBuf [2]byte
-	_, err := io.ReadFull(reader, twoBuf[:])
+	var firstTwo [2]byte
+	_, err := io.ReadFull(reader, firstTwo[:])
 	if err != nil {
 		return nil, err
 	}
 
-	first := twoBuf[0]
-	maskAndLen := twoBuf[1]
+	first := firstTwo[0]
+	maskAndLen := firstTwo[1]
 
 	var header frameHeader
 	header.Fin = (first & 0x80) != 0
@@ -100,6 +100,5 @@ func prepareFrameHeader(header *frameHeader) []byte {
 	if header.MaskingKey != nil {
 		buf = append(buf, header.MaskingKey...)
 	}
-
 	return buf
 }

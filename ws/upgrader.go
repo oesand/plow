@@ -25,8 +25,10 @@ type Upgrader struct {
 	_ internal.NoCopy
 
 	// SelectProtocol is an optional function to select a protocol from the
-	// Sec-WebSocket-Protocol header. If nil, the first protocol from the header will
-	// be selected by default.
+	// Sec-WebSocket-Protocol header.
+	//
+	// If nil, the first protocol from the header will be selected by default.
+	// if returned protocol is empty, the upgrade will fail with
 	SelectProtocol func(protocols []string) string
 
 	// EnableCompression indicates whether to enable WebSocket compression.
@@ -53,7 +55,7 @@ func (upgrader *Upgrader) Upgrade(req giglet.Request, handler Handler) giglet.Re
 	if req.Method() != specs.HttpMethodGet {
 		return giglet.TextResponse(specs.StatusCodeMethodNotAllowed, specs.ContentTypePlain,
 			"websocket: upgrading required request method - GET")
-	} else if !strings.EqualFold(req.Header().Get("Connection"), "upgrade") {
+	} else if !strings.Contains(strings.ToLower(req.Header().Get("Connection")), "upgrade") {
 		return giglet.TextResponse(specs.StatusCodeBadRequest, specs.ContentTypePlain,
 			"websocket: 'Upgrade' token not found in 'Connection' header")
 	} else if !strings.EqualFold(req.Header().Get("Upgrade"), "websocket") {
@@ -80,8 +82,10 @@ func (upgrader *Upgrader) Upgrade(req giglet.Request, handler Handler) giglet.Re
 	protocol := strings.TrimSpace(req.Header().Get("Sec-Websocket-Protocol"))
 	if protocol != "" {
 		protocols := strings.Split(protocol, ",")
-		for i := 0; i < len(protocols); i++ {
-			challengeProtocols = append(challengeProtocols, strings.TrimSpace(protocols[i]))
+
+		challengeProtocols = make([]string, len(protocols))
+		for i, p := range protocols {
+			challengeProtocols[i] = strings.TrimSpace(p)
 		}
 	}
 
@@ -117,7 +121,7 @@ func (upgrader *Upgrader) Upgrade(req giglet.Request, handler Handler) giglet.Re
 		wsConn.Close()
 	})
 
-	acceptKey := computeAcceptKey([]byte(challengeKey))
+	acceptKey := computeAcceptKey(challengeKey)
 
 	return giglet.EmptyResponse(specs.StatusCodeSwitchingProtocols, func(resp giglet.Response) {
 		resp.Header().Set("Upgrade", "websocket")

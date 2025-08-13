@@ -19,33 +19,6 @@ func framePayloadReader(rd io.Reader, maxSize int, maskingKey []byte, decompress
 	return reader
 }
 
-func prepareFramePayload(maskingKey []byte, compress bool, payload []byte) ([]byte, error) {
-	if compress {
-		var buf bytes.Buffer
-		fw, err := flate.NewWriter(&buf, flate.BestSpeed)
-		if err != nil {
-			return nil, err
-		}
-		if _, err = fw.Write(payload); err != nil {
-			return nil, err
-		}
-		if err = fw.Close(); err != nil {
-			return nil, err
-		}
-		payload = buf.Bytes()
-	}
-
-	if maskingKey != nil {
-		maskedPayload := make([]byte, len(payload))
-		for i := range payload {
-			maskedPayload[i] = payload[i] ^ maskingKey[i%4]
-		}
-		payload = maskedPayload
-	}
-
-	return payload, nil
-}
-
 type unmaskingReader struct {
 	io.LimitedReader
 
@@ -62,4 +35,29 @@ func (reader *unmaskingReader) Read(p []byte) (int, error) {
 		}
 	}
 	return n, err
+}
+
+func compressFramePayload(data []byte) ([]byte, error) {
+	// Compress the payload using per-message deflate
+	var buf bytes.Buffer
+	w, err := flate.NewWriter(&buf, flate.BestSpeed)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = w.Write(data); err != nil {
+		return nil, err
+	}
+	if err = w.Close(); err != nil {
+		return nil, err
+	}
+
+	// Remove the deflate tail if it exists
+	payload := buf.Bytes()
+	if len(payload) >= 4 {
+		n := len(payload)
+		if payload[n-4] == 0x00 && payload[n-3] == 0x00 && payload[n-2] == 0xFF && payload[n-1] == 0xFF {
+			return payload[:n-4], nil
+		}
+	}
+	return payload, nil
 }

@@ -29,19 +29,17 @@ var (
 	acceptBaseKey = []byte("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
 )
 
-func computeAcceptKey(challengeKey []byte) string {
+func computeAcceptKey(challengeKey string) string {
 	h := sha1.New() // (CWE-326) -- https://datatracker.ietf.org/doc/html/rfc6455#page-54
-	h.Write(challengeKey)
+	h.Write([]byte(challengeKey))
 	h.Write(acceptBaseKey)
 	return base64.StdEncoding.EncodeToString(h.Sum(nil))
 }
 
-func newChallengeKey() []byte {
+func newChallengeKey() (string, error) {
 	key := make([]byte, 16)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
-		panic(err)
+		return "", err
 	}
-	nonce := make([]byte, 24)
-	base64.StdEncoding.Encode(nonce, key)
-	return nonce
+	return base64.StdEncoding.EncodeToString(key), nil
 }

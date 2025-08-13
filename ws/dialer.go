@@ -94,8 +94,11 @@ func (dialer *Dialer) dial(ctx context.Context, client *giglet.Client, url *spec
 	req.Header().Set("Upgrade", "websocket")
 	req.Header().Set("Sec-Websocket-Version", "13")
 
-	challengeKey := newChallengeKey()
-	req.Header().Set("Sec-WebSocket-Key", string(challengeKey))
+	challengeKey, err := newChallengeKey()
+	if err != nil {
+		return nil, specs.NewOpError("ws", "fail to generate challenge key: %v", err)
+	}
+	req.Header().Set("Sec-WebSocket-Key", challengeKey)
 
 	if dialer.Origin != "" {
 		req.Header().Set("Origin", dialer.Origin)
@@ -122,8 +125,8 @@ func (dialer *Dialer) dial(ctx context.Context, client *giglet.Client, url *spec
 		return nil, specs.NewOpError("ws", "response cannot have body")
 	}
 
-	if !strings.EqualFold(req.Header().Get("Connection"), "upgrade") ||
-		!strings.EqualFold(req.Header().Get("Upgrade"), "websocket") {
+	if !strings.EqualFold(resp.Header().Get("Connection"), "upgrade") ||
+		!strings.EqualFold(resp.Header().Get("Upgrade"), "websocket") {
 		return nil, ErrFailChallenge
 	}
 

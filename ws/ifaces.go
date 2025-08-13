@@ -26,7 +26,12 @@ type Conn interface {
 	Read([]byte) (int, error)
 
 	// Write writes data to the WebSocket connection.
+	// The payload is expected to be a binary message.
 	Write([]byte) (int, error)
+
+	// WriteText writes a text message to the WebSocket connection.
+	// The payload is expected to be a UTF-8 encoded string.
+	WriteText(payload string) (int, error)
 
 	// WriteClose writes a close frame to the WebSocket connection with the specified close code.
 	WriteClose(WsCloseCode) error
