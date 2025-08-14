@@ -6,6 +6,8 @@ import (
 	"io"
 )
 
+var deflateTail = []byte{0x00, 0x00, 0xff, 0xff}
+
 func framePayloadReader(rd io.Reader, maxSize int, maskingKey []byte, decompress bool) io.Reader {
 	var reader io.Reader = &unmaskingReader{
 		LimitedReader: io.LimitedReader{R: rd, N: int64(maxSize)},
@@ -13,7 +15,7 @@ func framePayloadReader(rd io.Reader, maxSize int, maskingKey []byte, decompress
 	}
 
 	if decompress {
-		reader = flate.NewReader(reader)
+		reader = flate.NewReader(io.MultiReader(reader, bytes.NewReader(deflateTail)))
 	}
 
 	return reader

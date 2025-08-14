@@ -3,8 +3,8 @@ package giglet
 import (
 	"bufio"
 	"bytes"
-	"compress/flate"
 	"compress/gzip"
+	"compress/zlib"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -261,10 +261,7 @@ func TestTransport_DeflateEncoding(t *testing.T) {
 	testContent := []byte("Content\nEncoding 1234567890")
 	closeServer, url := newTestServer(func(req Request) (specs.StatusCode, *specs.Header, []byte) {
 		var cacheBuf bytes.Buffer
-		cw, err := flate.NewWriter(&cacheBuf, flate.DefaultCompression)
-		if err != nil {
-			t.Fatal(err)
-		}
+		cw := zlib.NewWriter(&cacheBuf)
 		cw.Write(testContent)
 		cw.Close()
 
@@ -358,10 +355,7 @@ func TestTransport_ChunkedAndDeflateEncoding(t *testing.T) {
 	closeServer, url := newTestServer(func(req Request) (specs.StatusCode, *specs.Header, []byte) {
 		var cacheBuf bytes.Buffer
 		cw := httputil.NewChunkedWriter(&cacheBuf)
-		ew, err := flate.NewWriter(cw, flate.DefaultCompression)
-		if err != nil {
-			t.Fatal(err)
-		}
+		ew := zlib.NewWriter(cw)
 		ew.Write(testContent)
 		ew.Close()
 		cw.Close()
@@ -821,8 +815,6 @@ func TestTransport_HttpsProxyAuth(t *testing.T) {
 			http.Error(w, "Invalid creds", http.StatusProxyAuthRequired)
 			return
 		}
-
-		t.Logf("HTTPS Tunnel: CONNECT %s\n", r.Host)
 
 		destConn, err := net.Dial("tcp", r.Host)
 		if err != nil {

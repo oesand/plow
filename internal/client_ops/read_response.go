@@ -33,6 +33,5 @@ func ReadResponse(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 	}
 
 	resp := NewHttpClientResponse(status, header)
-
 	return resp, nil
 }

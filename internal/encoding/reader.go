@@ -1,8 +1,8 @@
 package encoding
 
 import (
-	"compress/flate"
 	"compress/gzip"
+	"compress/zlib"
 	"fmt"
 	"github.com/andybalholm/brotli"
 	"github.com/oesand/giglet/specs"
@@ -14,7 +14,7 @@ func NewReader(contentEncoding string, reader io.Reader) (io.ReadCloser, error) 
 	case specs.ContentEncodingGzip:
 		return gzip.NewReader(reader)
 	case specs.ContentEncodingDeflate:
-		return flate.NewReader(reader), nil
+		return zlib.NewReader(reader)
 	case specs.ContentEncodingBrotli:
 		return io.NopCloser(brotli.NewReader(reader)), nil
 	}

@@ -2,8 +2,8 @@ package giglet
 
 import (
 	"bytes"
-	"compress/flate"
 	"compress/gzip"
+	"compress/zlib"
 	"context"
 	"crypto/tls"
 	"github.com/andybalholm/brotli"
@@ -404,7 +404,10 @@ func TestServer_DeflateEncoding(t *testing.T) {
 	defer body.Close()
 
 	reader := io.LimitReader(body, int64(contentLength))
-	reader = flate.NewReader(reader)
+	reader, err = zlib.NewReader(reader)
+	if err != nil {
+		t.Fatalf("encoder err: %s", err)
+	}
 
 	data, err := io.ReadAll(reader)
 	if err != nil {
@@ -587,7 +590,10 @@ func TestServer_DeflateEncodingAndChunkedTransferEncoding(t *testing.T) {
 	defer body.Close()
 
 	reader := httputil.NewChunkedReader(body)
-	reader = flate.NewReader(reader)
+	reader, err = zlib.NewReader(reader)
+	if err != nil {
+		t.Fatalf("encoder err: %s", err)
+	}
 
 	data, err := io.ReadAll(reader)
 	if err != nil {

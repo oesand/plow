@@ -1,155 +1,186 @@
 package ws
 
-/*
+import (
+	"context"
+	"github.com/oesand/giglet"
+	"github.com/oesand/giglet/mock"
+	"github.com/oesand/giglet/specs"
+	"testing"
+)
 
-func TestJustTest(t *testing.T) {
-	listener, err := net.Listen("tcp4", "127.0.0.1:58060")
-	if err != nil {
-		t.Fatal(err)
+func TestUpgrader_Upgrade_FailureCases(t *testing.T) {
+	cases := []struct {
+		name       string
+		req        giglet.Request
+		wantStatus specs.StatusCode
+	}{
+		{
+			name: "invalid method",
+			req: mock.DefaultRequest().
+				Method(specs.HttpMethodPost).
+				Request(),
+			wantStatus: specs.StatusCodeMethodNotAllowed,
+		},
+		{
+			name: "missing connection header",
+			req: mock.DefaultRequest().
+				Method(specs.HttpMethodGet).
+				Request(),
+			wantStatus: specs.StatusCodeBadRequest,
+		},
+		{
+			name: "invalid upgrade header",
+			req: mock.DefaultRequest().
+				Method(specs.HttpMethodGet).
+				ConfHeader(func(header *specs.Header) {
+					header.Set("Connection", "Upgrade")
+					header.Set("Upgrade", "notwebsocket")
+				}).
+				Request(),
+			wantStatus: specs.StatusCodeBadRequest,
+		},
+		{
+			name: "unsupported websocket version",
+			req: mock.DefaultRequest().
+				Method(specs.HttpMethodGet).
+				ConfHeader(func(header *specs.Header) {
+					header.Set("Connection", "Upgrade")
+					header.Set("Upgrade", "websocket")
+					header.Set("Sec-Websocket-Version", "12")
+				}).
+				Request(),
+			wantStatus: specs.StatusCodeNotImplemented,
+		},
+		{
+			name: "missing Sec-Websocket-Key",
+			req: mock.DefaultRequest().
+				Method(specs.HttpMethodGet).
+				ConfHeader(func(header *specs.Header) {
+					header.Set("Connection", "Upgrade")
+					header.Set("Upgrade", "websocket")
+					header.Set("Sec-Websocket-Version", "13")
+				}).
+				Request(),
+			wantStatus: specs.StatusCodeBadRequest,
+		},
 	}
 
-	server := giglet.DefaultServer(giglet.HandlerFunc(func(ctx context.Context, request giglet.Request) giglet.Response {
-		return DefaultUpgrader().Upgrade(request, func(ctx context.Context, conn Conn) {
-			fmt.Printf("New connection from %s\n", conn.RemoteAddr().String())
-			fmt.Printf("Compression: %v \n", conn.(*wsConn).compressEnabled)
-			for conn.Alive() {
-				buf, err := io.ReadAll(conn)
-				if err != nil {
-					if err == specs.ErrTimeout {
-						time.Sleep(1 * time.Second)
-						continue
-					}
-					t.Error(err)
-					break
-				}
-				t.Logf("Received: %s \n", buf)
-				fmt.Fprintf(conn, "Answer: %s", buf)
-			}
+	upgrader := DefaultUpgrader()
 
-			fmt.Printf("Disconnect %s\n", conn.RemoteAddr().String())
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			resp := upgrader.Upgrade(c.req, func(ctx context.Context, ws Conn) {})
+			if resp.StatusCode() != c.wantStatus {
+				t.Errorf("got status %d, want %d", resp.StatusCode(), c.wantStatus)
+			}
 		})
-	}))
-
-	t.Logf("Listening on %s", listener.Addr().String())
-	err = server.ServeTLSRaw(listener, testing_ops.NewTlsCert())
-	if err != nil {
-		t.Fatal(err)
 	}
 }
 
-
-
-func TestDial(t *testing.T) {
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+func TestUpgrader_Upgrade_Success(t *testing.T) {
+	challengeKey, err := newChallengeKey()
 	if err != nil {
-		t.Fatal(err)
-	}
-	defer listener.Close()
-
-	t.Logf("Listening on %s", listener.Addr().String())
-
-	wsServer := websocket.Server{}
-	wsServer.Handler = func(conn *websocket.Conn) {
-		for {
-			var buf = make([]byte, 4)
-			_, err := io.ReadFull(conn, buf)
-			//buf, err := io.ReadAll(conn)
-			if err != nil {
-				t.Error(err)
-				break
-			}
-			t.Logf("Server received: %s \n", buf)
-			//fmt.Fprintf(conn, "Answer: %s", buf)
-			conn.Write(buf)
-		}
+		t.Fatalf("failed to generate challenge key: %v", err)
 	}
 
-	go func() {
-		err = http.Serve(listener, wsServer)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
+	builder := mock.DefaultRequest().
+		Method(specs.HttpMethodGet).
+		ConfHeader(func(header *specs.Header) {
+			header.Set("Connection", "Upgrade")
+			header.Set("Upgrade", "websocket")
+			header.Set("Sec-Websocket-Version", "13")
+			header.Set("Sec-Websocket-Key", challengeKey)
+		})
 
-	client := giglet.DefaultClient()
+	req := builder.Request()
 
-	conn, err := DefaultDialer().Dial(client, *specs.MustParseUrl("ws://" + listener.Addr().String()))
-	if err != nil {
-		t.Fatal(err)
+	upgrader := DefaultUpgrader()
+	resp := upgrader.Upgrade(req, func(ctx context.Context, ws Conn) {})
+
+	if resp.StatusCode() != specs.StatusCodeSwitchingProtocols {
+		t.Fatalf("expected status %d, got %d", specs.StatusCodeSwitchingProtocols, resp.StatusCode())
 	}
-
-	t.Logf("Connected to %s", conn.RemoteAddr().String())
-
-	var i int
-	var input string = "000"
-	for conn.Alive() {
-		input += strconv.Itoa(i)
-		_, err = conn.Write([]byte(input))
-		if err != nil {
-			t.Error(err)
-			break
-		}
-		i++
-
-		t.Logf("Sent: %s \n", input)
-
-		//buf := make([]byte, len(input))
-		buf, err := io.ReadAll(conn)
-		//_, err = conn.Read(buf)
-		if err != nil && err != io.EOF {
-			t.Error(err)
-			break
-		}
-		t.Logf("Client received: %s \n", buf)
-
-		time.Sleep(1 * time.Second)
+	if builder.Hijacker() == nil {
+		t.Fatal("expected hijack to be called")
+	}
+	if resp.Header().Get("Upgrade") != "websocket" {
+		t.Error("missing Upgrade header")
+	}
+	if resp.Header().Get("Connection") != "Upgrade" {
+		t.Error("missing Connection header")
+	}
+	if resp.Header().Get("Sec-WebSocket-Accept") != computeAcceptKey(challengeKey) {
+		t.Error("incorrect Sec-WebSocket-Accept header")
 	}
 }
 
-
-
-func TestWs(t *testing.T) {
-	//conn, err := websocket.Dial("wss://ws.postman-echo.com/raw", "", "http://localhost/")
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-
-	url := specs.MustParseUrl("wss://ws.postman-echo.com/raw")
-	conn, err := DefaultDialer().Dial(giglet.DefaultClient(), url)
+// --- Protocol selection ---
+func TestUpgrader_Upgrade_ProtocolSelection(t *testing.T) {
+	challengeKey, err := newChallengeKey()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to generate challenge key: %v", err)
 	}
-	defer conn.Close()
 
-	t.Logf("Connected to %s", conn.RemoteAddr().String())
+	req := mock.DefaultRequest().
+		Method(specs.HttpMethodGet).
+		ConfHeader(func(header *specs.Header) {
+			header.Set("Connection", "Upgrade")
+			header.Set("Upgrade", "websocket")
+			header.Set("Sec-Websocket-Version", "13")
+			header.Set("Sec-Websocket-Key", challengeKey)
+			header.Set("Sec-Websocket-Protocol", "a, b, c")
+		}).
+		Request()
 
-	fmt.Printf("Compression: %v \n", conn.(*wsConn).compressEnabled)
+	upgrader := &Upgrader{
+		SelectProtocol:    func(protocols []string) string { return protocols[1] },
+		EnableCompression: false,
+	}
 
-	var i int
-	var input string = "000"
-	for {
-		input += strconv.Itoa(i)
-		_, err = conn.WriteText(input)
-		if err != nil {
-			t.Error(err)
-			break
+	resp := upgrader.Upgrade(req, func(ctx context.Context, conn Conn) {
+		wsconn := conn.(*wsConn)
+
+		if wsconn.protocol != "proto1" {
+			t.Fatal("incorrect ws protocol in connection")
 		}
-		i++
+	})
 
-		t.Logf("Sent: %s \n", input)
-
-		//buf := make([]byte, len(input))
-		buf, err := io.ReadAll(conn)
-		//_, err = conn.Read(buf)
-		if err != nil {
-			t.Error(err)
-			break
-		}
-		t.Logf("Received: %s \n", buf)
-
-		time.Sleep(1 * time.Second)
+	if resp.Header().Get("Sec-WebSocket-Protocol") != "b" {
+		t.Errorf("expected selected protocol 'b', got %q", resp.Header().Get("Sec-WebSocket-Protocol"))
 	}
 }
 
+// --- Compression ---
+func TestUpgrader_Upgrade_Compression(t *testing.T) {
+	challengeKey, err := newChallengeKey()
+	if err != nil {
+		t.Fatalf("failed to generate challenge key: %v", err)
+	}
 
-*/
+	req := mock.DefaultRequest().
+		Method(specs.HttpMethodGet).
+		ConfHeader(func(header *specs.Header) {
+			header.Set("Connection", "Upgrade")
+			header.Set("Upgrade", "websocket")
+			header.Set("Sec-Websocket-Version", "13")
+			header.Set("Sec-Websocket-Key", challengeKey)
+			header.Set("Sec-WebSocket-Extensions", "permessage-deflate")
+		}).
+		Request()
+
+	upgrader := &Upgrader{
+		EnableCompression: true,
+	}
+
+	resp := upgrader.Upgrade(req, func(ctx context.Context, conn Conn) {
+		wsconn := conn.(*wsConn)
+
+		if !wsconn.compressEnabled {
+			t.Fatal("compression should be enabled in connection")
+		}
+	})
+
+	if resp.Header().Get("Sec-WebSocket-Extensions") != "permessage-deflate" {
+		t.Errorf("expected compression header, got %q", resp.Header().Get("Sec-WebSocket-Extensions"))
+	}
+}

@@ -82,26 +82,25 @@ func (srv *Server) Serve(listener net.Listener) error {
 		}
 
 		connTrack.Add(1)
-		go func() {
+		go func(conn net.Conn) {
+			defer connTrack.Done()
 			defer func() {
-				if err := recover(); err != nil {
+				if r := recover(); r != nil {
 					if errorHandler != nil {
-						errorHandler.HandleError(ctx, conn, err)
+						errorHandler.HandleError(ctx, conn, r)
 					} else {
-						conn.SetDeadline(time.Now().Add(1 * time.Second))
+						conn.SetDeadline(time.Now().Add(time.Second))
 						responseInternalServerError.WriteTo(conn)
 					}
-					conn.Close()
 				}
-				connTrack.Done()
+				conn.Close()
 			}()
 
-			err := srv.handle(ctx, conn, handler)
-			if err != nil {
+			if err := srv.handle(ctx, conn, handler); err != nil {
 				if errorHandler != nil {
 					errorHandler.HandleError(ctx, conn, err)
 				} else {
-					conn.SetDeadline(time.Now().Add(1 * time.Second))
+					conn.SetDeadline(time.Now().Add(time.Second))
 					var respErr *server_ops.ErrorResponse
 					if errors.As(err, &respErr) {
 						respErr.WriteTo(conn)
@@ -110,8 +109,7 @@ func (srv *Server) Serve(listener net.Listener) error {
 					}
 				}
 			}
-			conn.Close()
-		}()
+		}(conn)
 	}
 
 	cancelCtx()

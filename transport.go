@@ -228,10 +228,7 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 	if proxyUrl != nil {
 		conn, err = transport.dial(ctx, proxyUrl.Host, proxyUrl.Port)
 		if err = catch.CatchCommonErr(err); err != nil {
-			return nil, &specs.GigletError{
-				Op:  "dial",
-				Err: err,
-			}
+			return nil, catch.TryWrapOpErr("dial", err)
 		}
 
 		var proxyCreds *proxy.Creds
@@ -242,18 +239,12 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 		err = transport.dialProxy(ctx, conn, proxyUrl.Scheme, host, url.Port, proxyCreds)
 		if err = catch.CatchCommonErr(err); err != nil {
 			conn.Close()
-			return nil, &specs.GigletError{
-				Op:  "proxy",
-				Err: err,
-			}
+			return nil, catch.TryWrapOpErr("proxy", err)
 		}
 	} else {
 		conn, err = transport.dial(ctx, host, url.Port)
 		if err = catch.CatchCommonErr(err); err != nil {
-			return nil, &specs.GigletError{
-				Op:  "dial",
-				Err: err,
-			}
+			return nil, catch.TryWrapOpErr("dial", err)
 		}
 	}
 
@@ -262,10 +253,7 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 		tlsConn, err = transport.dialTls(ctx, conn, host)
 		if err = catch.CatchCommonErr(err); err != nil {
 			conn.Close()
-			return nil, &specs.GigletError{
-				Op:  "tls",
-				Err: err,
-			}
+			return nil, catch.TryWrapOpErr("tls", err)
 		}
 		conn = tlsConn
 	}
@@ -278,10 +266,7 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 
 	if err = catch.CatchCommonErr(err); err != nil {
 		conn.Close()
-		return nil, &specs.GigletError{
-			Op:  "write",
-			Err: err,
-		}
+		return nil, catch.TryWrapOpErr("write", err)
 	} else if err = catch.CatchContextCancel(ctx); err != nil {
 		conn.Close()
 		return nil, err
@@ -344,6 +329,7 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 	} else {
 		contentEncoding := resp.Header().Get("Content-Encoding")
 		if contentEncoding != "" && !encoding.IsKnownEncoding(contentEncoding) {
+			conn.Close()
 			return nil, specs.ErrUnknownContentEncoding
 		}
 
@@ -369,6 +355,7 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 						reader = nil
 						conn.Close()
 					} else if transport.MaxBodySize > 0 && contentLength >= transport.MaxBodySize {
+						conn.Close()
 						return nil, specs.ErrTooLarge
 					}
 				}
@@ -483,6 +470,9 @@ func (transport *Transport) dialTls(ctx context.Context, conn net.Conn, host str
 var transportHijackerKey = internal.FlagKey{Key: "transport.hijacker.key"}
 
 func WithTransportHijacker(ctx context.Context) (*TransportHijacker, context.Context) {
+	if hijacker, has := ctx.Value(transportHijackerKey).(*TransportHijacker); has {
+		return hijacker, nil
+	}
 	hijacker := &TransportHijacker{}
 	return hijacker, context.WithValue(ctx, transportHijackerKey, hijacker)
 }

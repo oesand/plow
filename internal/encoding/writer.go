@@ -1,8 +1,8 @@
 package encoding
 
 import (
-	"compress/flate"
 	"compress/gzip"
+	"compress/zlib"
 	"fmt"
 	"github.com/andybalholm/brotli"
 	"github.com/oesand/giglet/specs"
@@ -14,7 +14,7 @@ func NewWriter(contentEncoding string, writer io.Writer) (io.WriteCloser, error)
 	case specs.ContentEncodingGzip:
 		return gzip.NewWriter(writer), nil
 	case specs.ContentEncodingDeflate:
-		return flate.NewWriter(writer, flate.DefaultCompression)
+		return zlib.NewWriter(writer), nil
 	case specs.ContentEncodingBrotli:
 		return brotli.NewWriter(writer), nil
 	}

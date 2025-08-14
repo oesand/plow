@@ -80,6 +80,13 @@ func (b *RequestBuilder) Header() *specs.Header {
 	return b.header
 }
 
+// ConfHeader applies a configuration function to the request header.
+// This allows for custom modifications to the header.
+func (b *RequestBuilder) ConfHeader(conf func(*specs.Header)) *RequestBuilder {
+	conf(b.Header())
+	return b
+}
+
 // Hijacker returns the hijack handler for the request.
 func (b *RequestBuilder) Hijacker() giglet.HijackHandler {
 	return b.hijacker

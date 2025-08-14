@@ -36,21 +36,22 @@ func CatchCommonErr(err error) error {
 }
 
 func CatchContextCancel(ctx context.Context) error {
-	err := ctx.Err()
+	err := CatchCommonErr(ctx.Err())
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return specs.ErrTimeout
+	return TryWrapOpErr("cause", err)
+}
+
+func TryWrapOpErr(op specs.GigletOp, err error) error {
+	if err == nil {
+		return nil
 	}
-	if errors.Is(err, context.Canceled) {
-		return specs.ErrCancelled
+	if _, ok := err.(*specs.GigletError); ok {
+		return err
 	}
-	if _, ok := err.(*specs.GigletError); !ok {
-		return &specs.GigletError{
-			Op:  "cause",
-			Err: err,
-		}
+	return &specs.GigletError{
+		Op:  op,
+		Err: err,
 	}
-	return err
 }

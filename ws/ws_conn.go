@@ -376,9 +376,11 @@ func (conn *wsConn) writeFrameLowLevel(ft wsFrameType, payload []byte, final boo
 	}
 
 	if maskingKey != nil {
+		maskedPayload := make([]byte, len(payload))
 		for i := range payload {
-			payload[i] ^= maskingKey[i%4]
+			maskedPayload[i] = payload[i] ^ maskingKey[i%4]
 		}
+		payload = maskedPayload
 	}
 
 	if _, err := conn.rws.Write(payload); err != nil {
