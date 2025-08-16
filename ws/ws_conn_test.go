@@ -296,11 +296,13 @@ func TestDialNetWebsocket(t *testing.T) {
 
 	t.Logf("Listening on %s", listener.Addr().String())
 
-	var input = "000"
 	wsServer := websocket.Server{}
 	wsServer.Handler = func(conn *websocket.Conn) {
+		var input = "000"
+		var i int
 		for {
-			var buf = make([]byte, len(input)+1)
+			input += strconv.Itoa(i)
+			var buf = make([]byte, len(input))
 			_, err := io.ReadFull(conn, buf)
 			if err != nil {
 				t.Error(err)
@@ -309,6 +311,7 @@ func TestDialNetWebsocket(t *testing.T) {
 			if !bytes.Equal(buf, []byte(input)) {
 				t.Fatalf("Invalid server received: %s \n", buf)
 			}
+			i++
 			t.Logf("Server received: %s \n", buf)
 			fmt.Fprintf(conn, "Answer: %s", buf)
 		}
@@ -338,6 +341,7 @@ func TestDialNetWebsocket(t *testing.T) {
 	t.Logf("Connected to %s", conn.RemoteAddr().String())
 
 	var i int
+	var input = "000"
 	for conn.Alive() {
 		if i >= 3 {
 			break
