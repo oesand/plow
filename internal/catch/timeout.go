@@ -2,42 +2,56 @@ package catch
 
 import (
 	"context"
-	"errors"
-	"github.com/oesand/giglet/specs"
 	"time"
 )
 
-type timeoutRes[T any] struct {
-	res T
-	err error
+type ResultErrPair[T any] struct {
+	Res T
+	Err error
 }
 
 func CallWithTimeoutContext[TR any](ctx context.Context, timeout time.Duration, fn func(context.Context) (TR, error)) (TR, error) {
-	if timeout <= 0 {
-		return fn(ctx)
+	if timeout > 0 {
+		var cancelTimeout context.CancelFunc
+		ctx, cancelTimeout = context.WithTimeout(ctx, timeout)
+		defer cancelTimeout()
 	}
 
-	ctx, cancelTimeout := context.WithTimeout(ctx, timeout)
-	defer cancelTimeout()
+	resc := make(chan ResultErrPair[TR], 1)
 
-	resc := make(chan timeoutRes[TR], 1)
-
-	go func(ctx context.Context, resc chan timeoutRes[TR]) {
+	go func(ctx context.Context, ch chan ResultErrPair[TR]) {
 		res, err := fn(ctx)
-		resc <- timeoutRes[TR]{res, err}
+		ch <- ResultErrPair[TR]{res, err}
 	}(ctx, resc)
 
 	select {
 	case <-ctx.Done():
 		err := ctx.Err()
-		if errors.Is(err, context.DeadlineExceeded) {
-			err = specs.ErrTimeout
-		}
-		if errors.Is(err, context.Canceled) {
-			err = specs.ErrCancelled
-		}
-		return *new(TR), err
+		return *new(TR), CatchCommonErr(err)
 	case res := <-resc:
-		return res.res, res.err
+		return res.Res, CatchCommonErr(res.Err)
+	}
+}
+
+func CallWithTimeoutContextErr(ctx context.Context, timeout time.Duration, fn func(context.Context) error) error {
+	if timeout > 0 {
+		var cancelTimeout context.CancelFunc
+		ctx, cancelTimeout = context.WithTimeout(ctx, timeout)
+		defer cancelTimeout()
+	}
+
+	errch := make(chan error, 1)
+
+	go func(ctx context.Context, ch chan error) {
+		err := fn(ctx)
+		ch <- err
+	}(ctx, errch)
+
+	select {
+	case <-ctx.Done():
+		err := ctx.Err()
+		return CatchCommonErr(err)
+	case err := <-errch:
+		return CatchCommonErr(err)
 	}
 }

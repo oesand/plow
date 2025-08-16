@@ -103,10 +103,10 @@ func TestSetCookies(t *testing.T) {
 	jar.SetCookies("example.com", []Cookie{c1, c2})
 
 	if jar.GetCookie("example.com", "cookie1") == nil {
-		t.Error("cookie1 not found")
+		t.Errorf("cookie1 not found. cookies: %+v", jar)
 	}
 	if jar.GetCookie("example.com", "cookie2") == nil {
-		t.Error("cookie2 not found")
+		t.Errorf("cookie2 not found. cookies: %+v", jar)
 	}
 }
 

@@ -1,7 +1,7 @@
 package parsing
 
 import (
-	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal"
 	"github.com/oesand/giglet/specs"
 	"slices"
 	"strconv"
@@ -13,7 +13,7 @@ func ParseClientRequestHeadline(line []byte) (method specs.HttpMethod, url strin
 	for i, b := range line {
 		if b == ' ' {
 			if method == "" {
-				method = specs.HttpMethod(utils.BufferToString(line[:i]))
+				method = specs.HttpMethod(internal.BufferToString(line[:i]))
 				if i < 3 {
 					break
 				}
@@ -23,7 +23,7 @@ func ParseClientRequestHeadline(line []byte) (method specs.HttpMethod, url strin
 					break
 				}
 
-				url = utils.BufferToString(line[len(method)+1 : i])
+				url = internal.BufferToString(line[len(method)+1 : i])
 				proto = line[i+1:]
 			}
 		}
@@ -46,7 +46,7 @@ func ParseServerResponseHeadline(line []byte) (status specs.StatusCode, major, m
 		return
 	}
 	res = false
-	code, err := strconv.ParseUint(utils.BufferToString(line[9:12]), 10, 16)
+	code, err := strconv.ParseUint(internal.BufferToString(line[9:12]), 10, 16)
 	if err != nil {
 		return
 	}

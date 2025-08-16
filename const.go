@@ -1,37 +1,59 @@
 package giglet
 
 import (
-	"crypto/tls"
-	"fmt"
-	"github.com/oesand/giglet/internal/server"
+	"github.com/oesand/giglet/internal/server_ops"
 	"github.com/oesand/giglet/specs"
+	"io"
 	"net"
+	"time"
 )
 
-type Handler func(request Request) Response
-type HijackHandler = server.HijackHandler
-type NextProtoHandler func(conn *tls.Conn)
-type EventHandler func()
+const (
+	// DefaultServerName default value for Server.ServerName parameter
+	DefaultServerName = "giglet"
 
-const DefaultServerName = "giglet"
+	// DefaultMaxRedirectCount default value for Client.MaxRedirectCount parameter
+	DefaultMaxRedirectCount int = 10
+
+	// DefaultMaxEncodingSize default value for Server.MaxEncodingSize parameter
+	DefaultMaxEncodingSize int64 = 5 << 20 // 5 mb
+)
 
 var (
-	zeroDialer         net.Dialer
 	httpV1NextProtoTLS = "http/1.1"
 
-	responseErrDowngradeHTTPS = &server.ErrorResponse{
-		Code: specs.StatusCodeBadRequest,
-		Text: "sent an HTTP request to an HTTPS server.",
+	defaultDialer = net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 10 * time.Second,
 	}
-	responseErrNotProcessable = &server.ErrorResponse{
+
+	responseErrDowngradeHTTPS = &server_ops.ErrorResponse{
+		Code: specs.StatusCodeBadRequest,
+		Text: "http: sent an HTTP request to an HTTPS server.",
+	}
+	responseErrNotProcessable = &server_ops.ErrorResponse{
 		Code: specs.StatusCodeUnprocessableEntity,
-		Text: "the request could not be processed.",
+		Text: "http: the request could not be processed.",
+	}
+	responseErrBodyTooLarge = &server_ops.ErrorResponse{
+		Code: specs.StatusCodeRequestEntityTooLarge,
+		Text: "http: too large body",
+	}
+	responseInternalServerError = &server_ops.ErrorResponse{
+		Code: specs.StatusCodeInternalServerError,
+		Text: "http: internal server error",
 	}
 )
 
-func validationErr(err string, a ...any) error {
-	return &specs.GigletError{
-		Op:  "validation",
-		Err: fmt.Errorf(err, a...),
+// ShortResponseWriter creates an io.WriterTo implementation that writes a short HTTP error response.
+// initialized with the provided status code and text.
+//
+// This is useful for quickly generating responses in HTTP handlers, ensuring consistent formatting
+// and status codes across the application. The returned object implements io.WriterTo, allowing it to be
+// written directly to an io.Writer, such as net.Conn.
+func ShortResponseWriter(code specs.StatusCode, text string) io.WriterTo {
+	return &server_ops.ErrorResponse{
+		Code: code,
+		Text: text,
 	}
 }

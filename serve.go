@@ -2,14 +2,13 @@ package giglet
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"errors"
 	"github.com/oesand/giglet/internal/catch"
-	"github.com/oesand/giglet/internal/server"
-	"github.com/oesand/giglet/internal/utils/stream"
-	"github.com/oesand/giglet/internal/writing"
+	"github.com/oesand/giglet/internal/encoding"
+	"github.com/oesand/giglet/internal/server_ops"
+	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
 	"io"
 	"net"
@@ -19,21 +18,35 @@ import (
 	"time"
 )
 
-func (server *Server) Serve(listener net.Listener) error {
+// Serve accepts incoming connections on the [net.Listener], creating a
+// new service goroutine for each. The service goroutines read requests and
+// then call [Server.Handler] to reply to them.
+//
+// HTTP/2 not supported
+//
+// Serve always returns a non-nil error.
+// After [Server.Shutdown], the returned error is [specs.ErrClosed].
+func (srv *Server) Serve(listener net.Listener) error {
 	if listener == nil {
-		return validationErr("nil listener")
+		panic("nil listener")
 	}
-	if server.Handler == nil {
-		return validationErr("nil server handler")
+	if srv.Handler == nil {
+		panic("nil server handler")
 	}
-	if server.isShuttingdown.Load() {
+	if srv.IsShutdown() {
 		return specs.ErrClosed
 	}
 
-	handler := server.Handler
+	srv.once.Do(srv.beforeOnce)
 
-	server.listenerTrack.Add(1)
-	defer server.listenerTrack.Done()
+	handler := srv.Handler
+	errorHandler := srv.ErrorHandler
+	if errorHandler == nil {
+		errorHandler, _ = handler.(ErrorHandler)
+	}
+
+	srv.listenerTrack.Add(1)
+	defer srv.listenerTrack.Done()
 
 	var attemptDelay time.Duration
 	var connTrack sync.WaitGroup
@@ -42,14 +55,7 @@ func (server *Server) Serve(listener net.Listener) error {
 	ctx, cancelCtx := context.WithCancel(context.Background())
 	for {
 		var conn net.Conn
-		conn, err = listener.Accept()
-		if server.isShuttingdown.Load() {
-			if err == nil && conn != nil {
-				conn.Close()
-			}
-			err = specs.ErrClosed
-			break
-		}
+		conn, err = srv.accept(ctx, listener)
 
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
@@ -68,135 +74,164 @@ func (server *Server) Serve(listener net.Listener) error {
 		}
 
 		attemptDelay = 0
-		connTrack.Add(1)
-
-		if server.FilterConn != nil {
-			if allow := server.FilterConn(conn.RemoteAddr()); !allow {
-				connTrack.Done()
+		if srv.FilterConn != nil {
+			if allow := srv.FilterConn(conn.RemoteAddr()); !allow {
 				conn.Close()
 				continue
 			}
 		}
 
-		go func() {
-			server.handle(ctx, conn, handler)
-			connTrack.Done()
-		}()
+		connTrack.Add(1)
+		go func(conn net.Conn) {
+			defer connTrack.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					if errorHandler != nil {
+						errorHandler.HandleError(ctx, conn, r)
+					} else {
+						conn.SetDeadline(time.Now().Add(time.Second))
+						responseInternalServerError.WriteTo(conn)
+					}
+				}
+				conn.Close()
+			}()
+
+			if err := srv.handle(ctx, conn, handler); err != nil {
+				if errorHandler != nil {
+					errorHandler.HandleError(ctx, conn, err)
+				} else {
+					conn.SetDeadline(time.Now().Add(time.Second))
+					var respErr *server_ops.ErrorResponse
+					if errors.As(err, &respErr) {
+						respErr.WriteTo(conn)
+					} else {
+						responseInternalServerError.WriteTo(conn)
+					}
+				}
+			}
+		}(conn)
 	}
 
 	cancelCtx()
 	connTrack.Wait()
-	listener.Close()
 
 	return err
 }
 
-func (srv *Server) catchCancelled(ctx context.Context) bool {
-	return ctx.Err() != nil
+func (srv *Server) accept(ctx context.Context, listener net.Listener) (net.Conn, error) {
+	connRes := make(chan catch.ResultErrPair[net.Conn], 1)
+
+	go func() {
+		conn, err := listener.Accept()
+		connRes <- catch.ResultErrPair[net.Conn]{conn, err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-srv.shuttingDown:
+		return nil, specs.ErrClosed
+	case res := <-connRes:
+		return res.Res, res.Err
+	}
 }
 
-func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
-	if srv.catchCancelled(ctx) {
-		conn.Close()
-		return
+func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) error {
+	var err error
+	if err = ctx.Err(); err != nil {
+		return err
 	}
 
 	if tlsConn, ok := conn.(*tls.Conn); ok {
-		_, err := catch.CallWithTimeoutContext(ctx, srv.TLSHandshakeTimeout, func(ctx context.Context) (struct{}, error) {
-			err := tlsConn.HandshakeContext(ctx)
-			return struct{}{}, err
-		})
+		err = catch.CallWithTimeoutContextErr(ctx, srv.TLSHandshakeTimeout, tlsConn.HandshakeContext)
 
 		if err != nil {
 			// If the handshake failed due to the client not speaking
 			// TLS, assume they're speaking plaintext HTTP and write a
 			// 400 response on the TLS conn underlying net.Conn.
 			if re, ok := err.(tls.RecordHeaderError); ok && re.Conn != nil {
-				responseErrDowngradeHTTPS.WriteTo(conn)
-				return
+				return responseErrDowngradeHTTPS
 			}
-			if srv.Debug {
-				srv.logger().Printf("giglet: tls handshake error from '%s': %v", conn.RemoteAddr(), err)
-			}
-			return
+			return err
 		}
 
 		proto := tlsConn.ConnectionState().NegotiatedProtocol
 
-		if srv.nextProtos != nil {
-			if handler, ok := srv.nextProtos[proto]; ok {
+		if srv.tlsNextProtos != nil {
+			if handler, ok := srv.tlsNextProtos[proto]; ok {
 				handler(tlsConn)
-				return
+				return nil
 			}
 		}
 	}
 
-	defer func() {
-		if err := recover(); err != nil && srv.Debug {
-			srv.logger().Printf("giglet: panic serving from '%s': %v", conn.RemoteAddr(), err)
-		}
-
-		conn.Close()
-	}()
-
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	for {
-		headerReader := stream.DefaultBufioReaderPool.Get(conn)
+	if srv.ReadTimeout > 0 {
+		conn.SetReadDeadline(time.Now().Add(srv.ReadTimeout))
+	}
 
-		if srv.ReadTimeout > 0 {
-			conn.SetReadDeadline(time.Now().Add(srv.ReadTimeout))
-		}
-		req, err := server.ReadRequest(ctx, conn, headerReader, srv.ReadLineMaxLength, srv.HeadMaxLength)
+	if srv.WriteTimeout > 0 {
+		conn.SetWriteDeadline(time.Now().Add(srv.WriteTimeout))
+	}
+
+	for {
+		req, extraBuffered, err := srv.readHeader(ctx, conn)
 
 		if err != nil {
-			stream.DefaultBufioReaderPool.Put(headerReader)
-			if srv.Debug {
-				srv.logger().Printf("giglet: read request error from '%s': %v", conn.RemoteAddr(), err)
-			}
 			if !catch.IsCommonNetReadError(err) {
-				var respErr *server.ErrorResponse
-				if errors.As(err, &respErr) {
-					respErr.WriteTo(conn)
-				} else {
-					responseErrNotProcessable.WriteTo(conn)
-				}
+				return responseErrNotProcessable
 			}
-			break
+			return err
 		}
 
-		if srv.catchCancelled(ctx) {
-			stream.DefaultBufioReaderPool.Put(headerReader)
-			break
+		if err = ctx.Err(); err != nil {
+			return err
 		}
 
 		if req.Method().IsPostable() {
-			extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
-
 			reader := io.MultiReader(bytes.NewReader(extraBuffered), conn)
 
-			if encoding, has := req.Header().TryGet("Transfer-Encoding"); has {
-				switch encoding {
-				case "chunked":
-					reader = httputil.NewChunkedReader(reader)
+			if req.Chunked {
+				if srv.MaxBodySize > 0 {
+					reader = io.LimitReader(reader, srv.MaxBodySize)
 				}
-			} else if raw, has := req.Header().TryGet("Content-Length"); has && len(raw) > 0 {
-				if contentLength, err := strconv.ParseInt(raw, 10, 64); err != nil {
-					reader = io.LimitReader(reader, contentLength)
+				reader = httputil.NewChunkedReader(reader)
+			} else {
+				var contentLength int64
+				if cl := req.Header().Get("Content-Length"); cl != "" {
+					contentLength, err = strconv.ParseInt(cl, 10, 64)
+					if err == nil {
+						if contentLength <= 0 {
+							reader = nil
+						} else if srv.MaxBodySize > 0 && contentLength >= srv.MaxBodySize {
+							return responseErrBodyTooLarge
+						}
+					} else {
+						return errors.New("invalid Content-Length header: " + cl)
+					}
+				}
+
+				if reader != nil {
+					if contentLength <= 0 && srv.MaxBodySize > 0 {
+						contentLength = srv.MaxBodySize
+					}
+
+					if contentLength > 0 {
+						reader = io.LimitReader(reader, contentLength)
+					}
 				}
 			}
 
 			req.BodyReader = reader
 		}
 
-		stream.DefaultBufioReaderPool.Put(headerReader)
-
-		if srv.catchCancelled(ctx) {
-			break
+		if err = ctx.Err(); err != nil {
+			return err
 		}
 
-		resp := handler(req)
+		resp := handler.Handle(ctx, req)
 		var header *specs.Header
 		var code specs.StatusCode
 		var writable BodyWriter
@@ -206,14 +241,10 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 			writable, _ = resp.(BodyWriter)
 		}
 		if header == nil {
-			header = &specs.Header{}
+			header = specs.NewHeader()
 		}
 
-		if srv.ReadTimeout > 0 {
-			conn.SetReadDeadline(time.Time{})
-		}
-
-		if len(srv.ServerName) > 0 {
+		if srv.ServerName != "" {
 			header.Set("Server", srv.ServerName)
 		} else {
 			header.Set("Server", DefaultServerName)
@@ -221,72 +252,124 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) {
 
 		header.Set("Date", time.Now().Format(specs.TimeFormat))
 
+		if req.SelectedEncoding != "" {
+			header.Set("Content-Encoding", req.SelectedEncoding)
+		}
+
 		if !code.IsValid() {
-			if !req.Method().CanHaveResponseBody() || writable == nil {
+			if !req.Method().IsReplyable() || writable == nil {
 				code = specs.StatusCodeNoContent
 			} else {
 				code = specs.StatusCodeOK
 			}
 		}
 
+		var encodedContent []byte
+		mustResponseBody := req.Method().IsReplyable() && code.IsReplyable() && writable != nil
+		if mustResponseBody {
+			if req.Chunked {
+				header.Set("Transfer-Encoding", "chunked")
+			} else if header.Get("Transfer-Encoding") == "chunked" {
+				req.Chunked = true
+			} else {
+				maxEncodingSize := DefaultMaxEncodingSize
+				if srv.MaxEncodingSize > 0 {
+					maxEncodingSize = srv.MaxEncodingSize
+				}
+				contentLength := writable.ContentLength()
+
+				if req.SelectedEncoding != "" && contentLength <= maxEncodingSize {
+					var cachedBody bytes.Buffer
+					err = srv.writeBody(writable, &cachedBody, false, req.SelectedEncoding)
+					if err != nil {
+						return err
+					}
+					encodedContent = cachedBody.Bytes()
+					header.Set("Content-Length", strconv.Itoa(len(encodedContent)))
+				} else {
+					req.SelectedEncoding = ""
+					if contentLength > 0 {
+						header.Set("Content-Length", strconv.FormatInt(contentLength, 10))
+					}
+				}
+			}
+		}
+
 		protoMajor, protoMinor := req.ProtoVersion()
 		isHttp11 := protoMajor == 1 && protoMinor == 1
 
-		if srv.WriteTimeout > 0 {
-			conn.SetWriteDeadline(time.Now().Add(srv.WriteTimeout))
-		}
-		_, err = writing.WriteResponseHead(conn, isHttp11, code, header)
+		_, err = server_ops.WriteResponseHead(conn, isHttp11, code, header)
 
 		if err != nil {
-			if srv.Debug {
-				srv.logger().Printf("giglet: error to send head to '%s': %v", conn.RemoteAddr(), err)
-			}
-			break
+			return err
 		}
 
-		if srv.catchCancelled(ctx) {
-			break
+		if err = ctx.Err(); err != nil {
+			return err
 		}
 
-		if req.Method().CanHaveResponseBody() && writable != nil {
-			var writer io.Writer = conn
-			var encodingCloser io.Closer
-
-			switch req.SelectedEncoding {
-			case specs.GzipContentEncoding:
-				gzw := gzip.NewWriter(writer)
-				writer = gzw
-				encodingCloser = gzw
+		if encodedContent != nil {
+			if len(encodedContent) > 0 {
+				_, err = conn.Write(encodedContent)
 			}
-
-			if req.SelectedEncoding != specs.UnknownContentEncoding {
-				resp.Header().Set("Content-Encoding", string(req.SelectedEncoding))
-			}
-
-			err = writable.WriteBody(writer)
-
-			if err == nil && encodingCloser != nil {
-				err = encodingCloser.Close()
-			}
-			if err != nil {
-				if srv.Debug {
-					srv.logger().Printf("giglet: error to send body to '%s': %v", conn.RemoteAddr(), err)
-				}
-				break
-			}
+		} else if mustResponseBody {
+			err = srv.writeBody(writable, conn, req.Chunked, req.SelectedEncoding)
 		}
 
-		if srv.WriteTimeout > 0 {
-			conn.SetWriteDeadline(time.Time{})
+		if err != nil {
+			return err
 		}
 
-		if srv.catchCancelled(ctx) {
-			break
+		if err = ctx.Err(); err != nil {
+			return err
 		} else if hijacker := req.Hijacker(); hijacker != nil {
-			hijacker(conn)
+			hijacker(ctx, conn)
 			break
-		} else if req.Method() != specs.HttpMethodHead && writable == nil && code.HaveBody() {
+		} else if req.Method() != specs.HttpMethodHead && writable == nil && code.IsReplyable() {
 			break
 		}
 	}
+
+	if srv.ReadTimeout > 0 {
+		conn.SetReadDeadline(time.Time{})
+	}
+
+	if srv.WriteTimeout > 0 {
+		conn.SetWriteDeadline(time.Time{})
+	}
+
+	return nil
+}
+
+func (srv *Server) readHeader(ctx context.Context, conn net.Conn) (*server_ops.HttpRequest, []byte, error) {
+	headerReader := stream.DefaultBufioReaderPool.Get(conn)
+	defer stream.DefaultBufioReaderPool.Put(headerReader)
+
+	req, err := server_ops.ReadRequest(ctx, conn.RemoteAddr(), headerReader, srv.ReadLineMaxLength, srv.HeadMaxLength)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
+	return req, extraBuffered, nil
+}
+
+func (srv *Server) writeBody(writable BodyWriter, writer io.Writer, chunked bool, contentEncoding string) error {
+	if chunked {
+		chw := encoding.NewChunkedWriter(writer)
+		defer chw.Close()
+		writer = chw
+	}
+
+	if contentEncoding != "" {
+		encodingWriter, err := encoding.NewWriter(contentEncoding, writer)
+		if err != nil {
+			return err
+		}
+		defer encodingWriter.Close()
+		writer = encodingWriter
+	}
+
+	return writable.WriteBody(writer)
 }

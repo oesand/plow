@@ -1,24 +1,31 @@
 package giglet
 
 import (
-	"github.com/oesand/giglet/internal/utils"
+	"fmt"
+	"github.com/oesand/giglet/internal"
 	"github.com/oesand/giglet/specs"
 	"io"
 )
 
-func NewRequest(method specs.HttpMethod, url *specs.Url) ClientRequest {
+func newRequest(method specs.HttpMethod, url *specs.Url) *clientRequest {
+	if !method.IsValid() {
+		panic("invalid http method")
+	}
+	if url == nil {
+		panic("passed nil url")
+	}
 	return &clientRequest{
 		method: method,
-		url:    url,
-		header: &specs.Header{},
+		url:    *url,
+		header: specs.NewHeader(),
 	}
 }
 
 type clientRequest struct {
-	_ utils.NoCopy
+	_ internal.NoCopy
 
 	method specs.HttpMethod
-	url    *specs.Url
+	url    specs.Url
 	header *specs.Header
 }
 
@@ -27,36 +34,73 @@ func (req *clientRequest) Method() specs.HttpMethod {
 }
 
 func (req *clientRequest) Url() specs.Url {
-	return *req.url
+	return req.url
 }
 
 func (req *clientRequest) Header() *specs.Header {
 	return req.header
 }
 
-func NewBufferRequest(method specs.HttpMethod, url *specs.Url, buffer []byte) ClientRequest {
+// EmptyRequest is implementation for the [ClientRequest] without body
+// to be sent by the [Client].
+//
+// if method unspecified then [specs.HttpMethodGet] will be set
+func EmptyRequest(method specs.HttpMethod, url *specs.Url) ClientRequest {
+	if method == "" {
+		method = specs.HttpMethodGet
+	}
+	return newRequest(method, url)
+}
+
+// TextRequest is implementation for the [ClientRequest]
+// with string as request body to be sent by the [Client] or [Transport].
+//
+// Content type applies as "Content-Type" header value
+//
+// if method unspecified then [specs.HttpMethodPost] will be set
+// if content type unspecified then [specs.ContentTypePlain] will be set
+func TextRequest(method specs.HttpMethod, url *specs.Url, contentType string, text string) ClientRequest {
+	if contentType == specs.ContentTypeUndefined {
+		contentType = specs.ContentTypePlain
+	}
+	return BufferRequest(method, url, contentType, []byte(text))
+}
+
+// BufferRequest is implementation for the [ClientRequest]
+// with []byte as request body to be sent by the [Client] or [Transport].
+//
+// Content type applies as "Content-Type" header value
+//
+// if method unspecified then [specs.HttpMethodPost] will be set
+// if content type unspecified then [specs.ContentTypeRaw] will be set
+func BufferRequest(method specs.HttpMethod, url *specs.Url, contentType string, buffer []byte) ClientRequest {
 	if method == "" {
 		method = specs.HttpMethodPost
-	} else if !method.IsValid() {
-		panic("giglet/request: invalid method")
+	} else if !method.IsPostable() {
+		panic(fmt.Sprintf("http method '%s' is not postable", method))
 	}
-	if url == nil {
-		panic("giglet/request: invalid url")
+	if buffer == nil {
+		panic("passed nil buffer")
 	}
 
-	return &bufferRequest{
-		clientRequest: clientRequest{
-			method: method,
-			url:    url,
-			header: specs.NewHeader(),
-		},
-		buffer: buffer,
+	req := &bufferRequest{
+		clientRequest: *newRequest(method, url),
+		buffer:        buffer,
+		contentLength: int64(len(buffer)),
 	}
+
+	if contentType == specs.ContentTypeUndefined {
+		contentType = specs.ContentTypeRaw
+	}
+	req.Header().Set("Content-Type", contentType)
+
+	return req
 }
 
 type bufferRequest struct {
 	clientRequest
-	buffer []byte
+	buffer        []byte
+	contentLength int64
 }
 
 func (req *bufferRequest) WriteBody(w io.Writer) error {
@@ -64,32 +108,53 @@ func (req *bufferRequest) WriteBody(w io.Writer) error {
 	return err
 }
 
-func NewStreamRequest(method specs.HttpMethod, url *specs.Url, stream io.Reader) ClientRequest {
+func (req *bufferRequest) ContentLength() int64 {
+	return req.contentLength
+}
+
+// StreamRequest is implementation for the [ClientRequest] that
+// copy response body from [io.Reader] to be sent by the [Client] or [Transport].
+//
+// Content type applies as "Content-Type" header value
+//
+// if method unspecified then [specs.HttpMethodPost] will be set
+// if content type unspecified then [specs.ContentTypeRaw] will be set
+func StreamRequest(method specs.HttpMethod, url *specs.Url, contentType string, stream io.Reader, contentLength int64) ClientRequest {
 	if method == "" {
 		method = specs.HttpMethodPost
-	} else if !method.IsValid() {
-		panic("giglet/request: invalid method")
-	}
-	if url == nil {
-		panic("giglet/request: invalid url")
+	} else if !method.IsPostable() {
+		panic(fmt.Sprintf("http method '%s' is not postable", method))
 	}
 
-	return &streamRequest{
-		clientRequest: clientRequest{
-			method: method,
-			url:    url,
-			header: specs.NewHeader(),
-		},
-		stream: stream,
+	if stream == nil {
+		panic("passed nil stream")
 	}
+
+	req := &streamRequest{
+		clientRequest: *newRequest(method, url),
+		stream:        stream,
+		contentLength: contentLength,
+	}
+
+	if contentType == specs.ContentTypeUndefined {
+		contentType = specs.ContentTypeRaw
+	}
+	req.Header().Set("Content-Type", contentType)
+
+	return req
 }
 
 type streamRequest struct {
 	clientRequest
-	stream io.Reader
+	stream        io.Reader
+	contentLength int64
 }
 
 func (req *streamRequest) WriteBody(w io.Writer) error {
 	_, err := io.Copy(w, req.stream)
 	return err
+}
+
+func (req *streamRequest) ContentLength() int64 {
+	return req.contentLength
 }

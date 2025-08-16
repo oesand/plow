@@ -2,17 +2,12 @@ package parsing
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"github.com/oesand/giglet/internal/catch"
-	"github.com/oesand/giglet/internal/utils"
-	"github.com/oesand/giglet/internal/utils/plain"
-	"github.com/oesand/giglet/internal/utils/stream"
+	"github.com/oesand/giglet/internal/stream"
 	"github.com/oesand/giglet/specs"
-	"golang.org/x/net/http/httpguts"
+	"io"
 )
-
-var rawColon = []byte(": ")
 
 func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, totalLimit int64) (*specs.Header, error) {
 	var totalLen int64
@@ -40,13 +35,15 @@ func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 		}
 
 		line, err := stream.ReadBufferLine(reader, lineLimit)
-		if err != nil {
+		if err != nil && err != io.EOF {
 			return nil, err
-		} else if len(line) == 0 {
+		} else if len(line) == 0 || err == io.EOF {
+			if key != nil {
+				applyKVHeader(header, string(key), string(value))
+			}
 			return header, nil
 		}
 
-		line = bytes.TrimLeft(line, " ")
 		if len(line) < 2 {
 			continue
 		}
@@ -55,32 +52,107 @@ func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 			return nil, specs.ErrTooLarge
 		}
 
-		if value != nil && len(value) != 0 && line[0] == '\t' {
-			value = append(value, line[1:]...)
+		k, v, ok := parseHeaderKVLine(line)
+		if !ok {
+			key, value = nil, nil
 			continue
 		}
 
-		var ok bool
-		key, value, ok = bytes.Cut(line, rawColon)
-		if !ok || len(key) == 0 || len(value) == 0 {
-			continue
-		}
-
-		headerKey, headerVal := utils.BufferToString(plain.TitleCaseBytes(key)), string(value)
-		if httpguts.ValidHeaderFieldName(headerKey) && httpguts.ValidHeaderFieldValue(headerVal) {
-			if headerKey == "Cookie" {
-				for cookieKey, cookieVal := range ParseCookieHeader(headerVal) {
-					header.SetCookieValue(cookieKey, cookieVal)
-				}
-			} else if headerKey == "Set-Cookie" {
-				cookie := ParseSetCookieHeader(headerVal)
-				if cookie != nil {
-					header.SetCookie(*cookie)
-				}
-			} else {
-				header.Set(headerKey, headerVal)
+		if k == nil {
+			if key == nil {
+				continue
 			}
+			value = append(value, ' ')
+			value = append(value, v...)
+			continue
 		}
-		key, value = nil, nil
+
+		if key != nil {
+			applyKVHeader(header, string(key), string(value))
+		}
+		key, value = k, v
 	}
+}
+
+func applyKVHeader(header *specs.Header, key, value string) {
+	if key == "Cookie" {
+		for cookieKey, cookieVal := range ParseCookieHeader(value) {
+			header.SetCookieValue(cookieKey, cookieVal)
+		}
+	} else if key == "Set-Cookie" {
+		cookie := ParseSetCookieHeader(value)
+		if cookie != nil {
+			header.SetCookie(*cookie)
+		}
+	} else {
+		header.Set(key, value)
+	}
+}
+
+func parseHeaderKVLine(line []byte) ([]byte, []byte, bool) {
+	var k, v []byte
+
+	var writeVal bool
+	capNext := true // capitalize first letter or anything after space
+
+	for i, b := range line {
+		if !writeVal {
+			if 'a' <= b && b <= 'z' && capNext {
+				b -= 32 // to upper
+			} else if 'A' <= b && b <= 'Z' && !capNext {
+				b += 32 // to lowercase
+			}
+
+			switch b {
+			case ' ', '\t':
+				if i == 0 {
+					writeVal = true
+					k = nil
+				}
+				continue
+			case ':':
+				if len(k) == 0 {
+					return nil, nil, false
+				}
+				writeVal = true
+				capNext = false
+				continue
+			case '-', '_':
+				capNext = true
+			default:
+				capNext = false
+			}
+
+			if !isTokenChar(b) {
+				return nil, nil, false
+			}
+
+			k = append(k, b)
+		} else {
+			switch b {
+			case ' ', '\t':
+				continue
+			}
+
+			var e int
+			for e = len(line) - 1; e > i; e-- {
+				switch line[e] {
+				case ' ', '\t':
+					continue
+				}
+				break
+			}
+
+			v = make([]byte, e-i+1)
+			copy(v, line[i:e+1])
+			break
+		}
+	}
+	if !writeVal && len(v) == 0 {
+		return nil, nil, false
+	}
+	if v == nil {
+		v = make([]byte, 0)
+	}
+	return k, v, writeVal
 }

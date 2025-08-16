@@ -1,45 +1,49 @@
 package specs
 
-type ContentType string
-
+// ContentType defines the content type of a file or data.
+//
+// It is used to specify the media type of the content being sent or received.
+// This is useful in HTTP headers, file uploads, and other scenarios where the type of content
+// needs to be communicated clearly.
+// The constants defined here are commonly used content types.
+// The values are based on the MIME types as defined in RFC 2045 and other relevant standards.
+//
+// For more information, see: https://www.iana.org/assignments/media-types/media-types.xhtml
 const (
-	ContentTypeUndefined ContentType = ""
-	ContentTypeRaw       ContentType = "application/octet-stream"
-	ContentTypePlain     ContentType = "plain/plain"
-	ContentTypeRichtext  ContentType = "application/rtf"
-	ContentTypeMarkdown  ContentType = "plain/markdown"
+	ContentTypeUndefined = ""
+	ContentTypeRaw       = "application/octet-stream"
+	ContentTypePlain     = "text/plain"
+	ContentTypeRichText  = "application/rtf"
+	ContentTypeMarkdown  = "text/markdown"
 
-	ContentTypeHTML       ContentType = "plain/html"
-	ContentTypeCSV        ContentType = "plain/csv"
-	ContentTypeCSS        ContentType = "plain/css"
-	ContentTypePDF        ContentType = "application/pdf"
-	ContentTypeJavaScript ContentType = "plain/javascript"
-	ContentTypeFontTTF    ContentType = "font/ttf"
+	ContentTypeHTML       = "text/html"
+	ContentTypeCSV        = "text/csv"
+	ContentTypeCSS        = "text/css"
+	ContentTypePDF        = "application/pdf"
+	ContentTypeJavaScript = "text/javascript"
+	ContentTypeFontTTF    = "font/ttf"
 
-	ContentTypeAVI  ContentType = "video/x-msvideo"
-	ContentTypeWAV  ContentType = "audio/wav"
-	ContentTypeMP3  ContentType = "audio/mpeg"
-	ContentTypeMP4  ContentType = "video/mp4"
-	ContentTypeMPEG ContentType = "video/mpeg"
-	ContentTypeMPV  ContentType = "video/MPV"
-	ContentTypeMKV  ContentType = "application/x-matroska"
+	ContentTypeAVI  = "video/x-msvideo"
+	ContentTypeWAV  = "audio/wav"
+	ContentTypeMP3  = "audio/mpeg"
+	ContentTypeMP4  = "video/mp4"
+	ContentTypeMPEG = "video/mpeg"
+	ContentTypeMPV  = "video/MPV"
+	ContentTypeMKV  = "application/x-matroska"
 
-	ContentTypeAVIF ContentType = "image/avif"
-	ContentTypeBMP  ContentType = "image/bmp"
-	ContentTypeGIF  ContentType = "image/gif"
-	ContentTypeJPEG ContentType = "image/jpeg"
-	ContentTypePNG  ContentType = "image/png"
-	ContentTypeWEBP ContentType = "image/webp"
-	ContentTypeSVG  ContentType = "image/svg+xml"
+	ContentTypeAVIF = "image/avif"
+	ContentTypeBMP  = "image/bmp"
+	ContentTypeGIF  = "image/gif"
+	ContentTypeJPEG = "image/jpeg"
+	ContentTypePNG  = "image/png"
+	ContentTypeWEBP = "image/webp"
+	ContentTypeSVG  = "image/svg+xml"
 
-	ContentTypeJson      ContentType = "application/json"
-	ContentTypeXml       ContentType = "application/xml"
-	ContentTypeMsgpack   ContentType = "application/msgpack"
-	ContentTypeProtobuf  ContentType = "application/x-protobuf"
-	ContentTypeForm      ContentType = "application/x-www-form-urlencoded"
-	ContentTypeMultipart ContentType = "multipart/form-data"
+	ContentTypeJson           = "application/json"
+	ContentTypeXml            = "application/xml"
+	ContentTypeMsgpack        = "application/msgpack"
+	ContentTypeProtobuf       = "application/x-protobuf"
+	ContentTypeForm           = "application/x-www-form-urlencoded"
+	ContentTypeMultipart      = "multipart/form-data"
+	ContentTypeMultipartMixed = "multipart/mixed"
 )
-
-func (contentType ContentType) IsForm() bool {
-	return contentType == ContentTypeForm || contentType == ContentTypeMultipart
-}

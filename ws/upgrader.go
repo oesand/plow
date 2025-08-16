@@ -1,0 +1,140 @@
+package ws
+
+import (
+	"context"
+	"github.com/oesand/giglet"
+	"github.com/oesand/giglet/internal"
+	"github.com/oesand/giglet/specs"
+	"net"
+	"strings"
+	"time"
+)
+
+// DefaultUpgrader returns a default Upgrader instance with no custom protocol selection.
+func DefaultUpgrader() *Upgrader {
+	return &Upgrader{
+		EnableCompression: true,
+		MaxFrameSize:      8 * 1024, // 8KB
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      5 * time.Second,
+	}
+}
+
+// Upgrader is used to upgrade HTTP requests to WebSocket connections.
+type Upgrader struct {
+	_ internal.NoCopy
+
+	// SelectProtocol is an optional function to select a protocol from the
+	// Sec-WebSocket-Protocol header.
+	//
+	// If nil, the first protocol from the header will be selected by default.
+	// if returned protocol is empty, the upgrade will fail with
+	SelectProtocol func(protocols []string) string
+
+	// EnableCompression indicates whether to enable WebSocket compression.
+	//
+	// If true, the server will support the 'permessage-deflate' extension.
+	EnableCompression bool
+
+	// MaxFrameSize is the maximum size of a WebSocket frame in bytes.
+	MaxFrameSize int
+
+	// ReadTimeout indicates the maximum duration for reading messages from the WebSocket connection.
+	ReadTimeout time.Duration
+
+	// WriteTimeout indicates the maximum duration for writing messages to the WebSocket connection.
+	WriteTimeout time.Duration
+}
+
+// Upgrade upgrades an HTTP request to a WebSocket connection. It checks the request
+// method, headers, and the Sec-WebSocket-Key. If the request is valid, it
+// hijacks the connection and invokes the provided handler with a new WebSocket
+// connection. The response is returned with the necessary headers to complete the
+// WebSocket handshake.
+func (upgrader *Upgrader) Upgrade(req giglet.Request, handler Handler) giglet.Response {
+	if req.Method() != specs.HttpMethodGet {
+		return giglet.TextResponse(specs.StatusCodeMethodNotAllowed, specs.ContentTypePlain,
+			"websocket: upgrading required request method - GET")
+	} else if !strings.Contains(strings.ToLower(req.Header().Get("Connection")), "upgrade") {
+		return giglet.TextResponse(specs.StatusCodeBadRequest, specs.ContentTypePlain,
+			"websocket: 'Upgrade' token not found in 'Connection' header")
+	} else if !strings.EqualFold(req.Header().Get("Upgrade"), "websocket") {
+		return giglet.TextResponse(specs.StatusCodeBadRequest, specs.ContentTypePlain,
+			"websocket: 'websocket' token not found in 'Upgrade' header")
+	} else if req.Header().Get("Sec-Websocket-Version") != "13" {
+		return giglet.TextResponse(specs.StatusCodeNotImplemented, specs.ContentTypePlain,
+			"websocket: supports only websocket 13 version")
+	}
+
+	challengeKey := req.Header().Get("Sec-Websocket-Key")
+	if challengeKey == "" {
+		return giglet.TextResponse(specs.StatusCodeBadRequest, specs.ContentTypePlain,
+			"websocket: not a websocket handshake: `Sec-WebSocket-Key' header is missing or blank")
+	}
+
+	var compression bool
+	if upgrader.EnableCompression {
+		extensions := req.Header().Get("Sec-WebSocket-Extensions")
+		compression = strings.Contains(extensions, "permessage-deflate")
+	}
+
+	var challengeProtocols []string
+	protocol := strings.TrimSpace(req.Header().Get("Sec-Websocket-Protocol"))
+	if protocol != "" {
+		protocols := strings.Split(protocol, ",")
+
+		challengeProtocols = make([]string, len(protocols))
+		for i, p := range protocols {
+			challengeProtocols[i] = strings.TrimSpace(p)
+		}
+	}
+
+	var selectedProtocol string
+	if len(challengeProtocols) > 0 {
+		if upgrader.SelectProtocol != nil {
+			selectedProtocol = upgrader.SelectProtocol(challengeProtocols)
+			if selectedProtocol == "" {
+				return giglet.TextResponse(specs.StatusCodeNotImplemented, specs.ContentTypePlain,
+					"websocket: not found supported protocols from `Sec-WebSocket-Protocol` header")
+			}
+		} else {
+			selectedProtocol = challengeProtocols[0]
+		}
+	}
+
+	req.Hijack(func(ctx context.Context, conn net.Conn) {
+		conn.SetDeadline(time.Time{})
+
+		wsConn := newWsConn(
+			ctx,
+			conn,
+			true,
+			compression,
+
+			upgrader.MaxFrameSize,
+			upgrader.ReadTimeout,
+			upgrader.WriteTimeout,
+
+			selectedProtocol,
+		)
+
+		handler(ctx, wsConn)
+		wsConn.Close()
+	})
+
+	acceptKey := computeAcceptKey(challengeKey)
+
+	return giglet.EmptyResponse(specs.StatusCodeSwitchingProtocols, func(resp giglet.Response) {
+		resp.Header().Set("Upgrade", "websocket")
+		resp.Header().Set("Connection", "Upgrade")
+		resp.Header().Set("Sec-WebSocket-Accept", acceptKey)
+
+		if compression {
+			resp.Header().Set("Sec-WebSocket-Extensions", "permessage-deflate")
+		}
+
+		if selectedProtocol != "" {
+			resp.Header().Set("Sec-WebSocket-Protocol", selectedProtocol)
+		}
+	})
+}

@@ -2,25 +2,40 @@ package ws
 
 import (
 	"context"
-	"github.com/oesand/giglet/specs"
 	"net"
-	"time"
 )
 
+// Handler is a function used to handle WebSocket connections.
+type Handler func(ctx context.Context, conn Conn)
+
+// Conn represents a WebSocket connection interface.
+// It provides methods to interact with the connection, such as reading and writing data,
+// setting deadlines, and checking the connection status.
 type Conn interface {
-	Context() context.Context
-	WithContext(context context.Context)
-
+	// RemoteAddr returns the remote network address of the connection.
 	RemoteAddr() net.Addr
-	Url() *specs.Url
-	Header() *specs.Header
 
+	// Protocol returns the protocol used by the WebSocket connection.
+	// Provided by the server during the handshake.
+	Protocol() string
+
+	// Alive checks if the WebSocket connection is still alive.
 	Alive() bool
-	SetDeadline(time.Time) error
-	SetReadDeadline(time.Time) error
-	SetWriteDeadline(time.Time) error
 
-	Read() (WebSocketFrame, []byte, error)
-	Write(WebSocketFrame, []byte) error
-	Close(WebSocketClose) error
+	// Read reads data from the WebSocket connection into the provided byte slice.
+	Read([]byte) (int, error)
+
+	// Write writes data to the WebSocket connection.
+	// The payload is expected to be a binary message.
+	Write([]byte) (int, error)
+
+	// WriteText writes a text message to the WebSocket connection.
+	// The payload is expected to be a UTF-8 encoded string.
+	WriteText(payload string) (int, error)
+
+	// WriteClose writes a close frame to the WebSocket connection with the specified close code.
+	WriteClose(WsCloseCode) error
+
+	// Close closes the WebSocket connection.
+	Close() error
 }

@@ -2,7 +2,7 @@ package parsing
 
 import (
 	"bytes"
-	"github.com/oesand/giglet/internal/utils"
+	"github.com/oesand/giglet/internal"
 	"strconv"
 )
 
@@ -25,11 +25,11 @@ func parseHTTPVersion(value []byte) (major, minor uint16, ok bool) {
 		return 0, 0, false
 	}
 
-	maj, err := strconv.ParseUint(utils.BufferToString(value[5:6]), 10, 16)
+	maj, err := strconv.ParseUint(internal.BufferToString(value[5:6]), 10, 16)
 	if err != nil {
 		return 0, 0, false
 	}
-	min, err := strconv.ParseUint(utils.BufferToString(value[7:8]), 10, 16)
+	min, err := strconv.ParseUint(internal.BufferToString(value[7:8]), 10, 16)
 	if err != nil {
 		return 0, 0, false
 	}

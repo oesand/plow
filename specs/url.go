@@ -1,11 +1,13 @@
 package specs
 
 import (
-	"github.com/oesand/giglet/internal/utils/plain"
+	"errors"
+	"github.com/oesand/giglet/internal/plain"
 	"strconv"
 	"strings"
 )
 
+// MustParseUrl is a helper function that parses a URL string and panics if it fails.
 func MustParseUrl(url string) *Url {
 	ur, err := ParseUrl(url)
 	if err != nil {
@@ -14,6 +16,7 @@ func MustParseUrl(url string) *Url {
 	return ur
 }
 
+// MustParseUrlQuery is a helper function that parses a URL string and sets the query if it is empty.
 func MustParseUrlQuery(url string, query Query) *Url {
 	obj, err := ParseUrl(url)
 	if err != nil {
@@ -25,210 +28,205 @@ func MustParseUrlQuery(url string, query Query) *Url {
 	return obj
 }
 
+// ParseUrl parses a URL string and returns a Url object.
 func ParseUrl(url string) (*Url, error) {
-	obj := &Url{}
-	if len(url) == 0 {
-		return obj, nil
+	switch url {
+	case "":
+		return &Url{}, nil
+	case "/":
+		return &Url{Path: url}, nil
 	}
 
-	if url == "/" {
-		obj.Path = url
-		return obj, nil
-	}
-
-	if rest, raw, ok := strings.Cut(url, "#"); ok {
-		url = rest
-		if hash, err := plain.UnEscapeUrl(raw, plain.EscapingFragment); err == nil {
-			obj.Hash = hash
-		} else {
-			obj.Hash = raw
-		}
-	}
-
-	if url == "" {
-		return obj, nil
-	}
-
-	// Scheme[0], Username[1], Password[2], Host[3], Port[4], Path[5], Query[6], Hash[7]
-	const (
-		stepScheme = iota
-		stepHost
-		stepPort
-		stepPath
-		stepQuery
-	)
-
-	var mark, step int
-	end := len(url) - 1
-
-	if url[0] == '/' {
-		step = stepPath
-	}
-
+	// invalid control character
 	for i := 0; i < len(url); i++ {
 		c := url[i]
-		switch {
-		// invalid control character
-		case c < ' ' || c == 0x7f:
-			return nil, ErrInvalidFormat
-
-		// read 'scheme'
-		case step == stepScheme && i+2 <= end && url[i] == ':' && url[i+1] == '/':
-			if 0 == i || i+2 == end || url[i+2] != '/' {
-				return nil, ErrInvalidFormat
-			}
-
-			step = stepHost // goto 'host'
-			obj.Scheme = url[mark:i]
-			i += 2
-			mark = i + 1
-			continue
-
-		// read 'host'
-		case step == stepScheme || step == stepHost:
-			switch {
-			case i == end:
-				if len(url)-mark < 1 {
-					return nil, ErrInvalidFormat
-				}
-				obj.Host = url[mark:]
-				step = stepHost // exit with ends on 'host'
-
-			default:
-				// invalid 'scheme' characters - force 'host'
-				if step == stepScheme &&
-					!('a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' ||
-						(i > 0 && ('0' <= c && c <= '9' || c == '+' || c == '-' || c == '.'))) {
-
-					step = stepHost // goto 'host'
-				}
-
-				switch c {
-				case ':':
-					if url[mark] == '[' && url[i-1] != ']' {
-						continue
-					}
-					step = stepPort // goto 'port'
-				case '/':
-					step = stepPath // goto 'path'
-				case '?':
-					step = stepQuery // goto 'query'
-				case '@': // read as 'user'
-					if i-mark <= 1 || obj.Username != "" {
-						return nil, ErrInvalidFormat
-					}
-					obj.Username = url[mark:i]
-					step = stepHost // goto 'host'
-					mark = i + 1
-					continue
-				default:
-					continue
-				}
-
-				if i-mark < 1 {
-					return nil, ErrInvalidFormat
-				}
-
-				obj.Host = url[mark:i]
-				mark = i + 1
-			}
-
-		// read 'port'
-		case step == stepPort:
-			switch {
-			case i == end:
-				if len(url)-mark < 1 {
-					return nil, ErrInvalidFormat
-				}
-				if !obj.setPort(url[mark:]) {
-					return nil, ErrInvalidFormat
-				}
-			default:
-				switch c {
-				case '/':
-					step = stepPath // goto 'path'
-				case '?':
-					step = stepQuery // goto 'query'
-				case '@': // read as 'user & pass'
-					if i-mark <= 1 || obj.Username != "" || obj.Password != "" {
-						return nil, ErrInvalidFormat
-					}
-					obj.Username = obj.Host
-					obj.Password = url[mark:i]
-					obj.Host = ""
-					step = stepHost // goto 'host'
-					mark = i + 1
-					continue
-				default:
-					continue
-				}
-				if i-mark < 1 {
-					return nil, ErrInvalidFormat
-				}
-				if !obj.setPort(url[mark:i]) {
-					return nil, ErrInvalidFormat
-				}
-				mark = i + 1
-			}
-
-		// read 'path'
-		case step == stepPath:
-			switch {
-			case i == end || c == '?':
-				if mark != 0 {
-					mark--
-				}
-
-				var text string
-				if i == end {
-					text = url[mark:]
-				} else {
-					text = url[mark:i]
-				}
-
-				if text == "/" {
-					obj.Path = text
-				} else if path, err := plain.UnEscapeUrl(text, plain.EscapingPath); err == nil {
-					obj.Path = path
-				} else {
-					obj.Path = text
-				}
-
-				mark = i + 1
-				if c == '?' {
-					step = stepQuery // goto 'query'
-				}
-			}
-
-		// read 'query'
-		case step == stepQuery:
-			switch {
-			case i == end:
-				obj.Query = ParseQuery(url[mark:])
-			}
+		if c < ' ' || c == 0x7f {
+			return nil, errors.New("invalid control character in url")
 		}
+	}
+
+	obj := &Url{}
+
+	// Parse scheme
+	end := len(url) - 1
+	for i, c := range url {
+		if 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' ||
+			(i > 0 && ('0' <= c && c <= '9' || c == '+' || c == '-' || c == '.')) {
+			continue
+		}
+
+		if i+2 <= end && url[i] == ':' && url[i+1] == '/' {
+			if 0 == i || i+2 == end || url[i+2] != '/' {
+				return nil, errors.New("invalid scheme suffix")
+			}
+
+			obj.Scheme = url[:i]
+			url = url[i+3:]
+		}
+
+		break
+	}
+
+	// Parse fragment
+	if rest, fragment, ok := strings.Cut(url, "#"); ok {
+		url = rest
+		obj.Fragment = fragment
+	} else {
+		url = strings.TrimSuffix(url, "#")
+	}
+
+	// Parse query
+	if rest, query, ok := strings.Cut(url, "?"); ok {
+		url = rest
+		obj.Query = ParseQuery(query)
+	} else {
+		url = strings.TrimSuffix(url, "?")
+	}
+
+	// Parse path
+	if rest, path, ok := strings.Cut(url, "/"); ok {
+		url = rest
+		if path == "" {
+			obj.Path = "/"
+		} else {
+			obj.Path = "/" + path
+		}
+	} else {
+		url = strings.TrimSuffix(url, "/")
+	}
+
+	// Parse username & password
+	if raw, rest, ok := strings.Cut(url, "@"); ok {
+		url = rest
+		if username, password, ok := strings.Cut(raw, ":"); ok {
+			obj.Username = username
+			obj.Password = password
+		} else {
+			obj.Username = raw
+		}
+
+		if obj.Username == "" {
+			return nil, errors.New("username must not be empty when passed")
+		}
+	} else {
+		url = strings.TrimSuffix(url, "@")
+	}
+
+	// Parse host:port
+	portIndex := strings.LastIndex(url, ":")
+	if strings.HasPrefix(url, "[") {
+		i := strings.Index(url, "]")
+		if i < 0 {
+			return nil, errors.New("missing ']' in host")
+		}
+		if i > portIndex {
+			portIndex = -1
+		}
+	}
+
+	if portIndex == 0 {
+		return nil, errors.New("empty host when port passed")
+	} else if portIndex > 0 {
+		if portIndex == len(url)-1 {
+			return nil, errors.New("empty port")
+		}
+
+		host, port := url[:portIndex], url[portIndex+1:]
+		obj.Host = host
+
+		portNum, err := strconv.ParseUint(port, 10, 16)
+		if err != nil {
+			return nil, errors.New("cannot parse port")
+		}
+		obj.Port = uint16(portNum)
+	} else {
+		obj.Host = url
+	}
+
+	if obj.Host == "" {
+		if obj.Scheme != "" {
+			return nil, errors.New("host required when scheme passed")
+		}
+		if obj.Username != "" {
+			return nil, errors.New("host required when username passed")
+		}
+	}
+
+	// Escaping
+	if len(obj.Host) > 0 {
+		host := obj.Host
+		if strings.HasSuffix(host, "]") && !strings.HasPrefix(obj.Host, "[") {
+			return nil, errors.New("missing '[' in host")
+		}
+
+		if strings.HasPrefix(host, "[") {
+			// RFC 6874 defines that %25 (%-encoded percent) introduces
+			// the zone identifier, and the zone identifier can use basically
+			// any %-encoding it likes. That's different from the host, which
+			// can only %-encode non-ASCII bytes.
+			// We do impose some restrictions on the zone, to avoid stupidity
+			// like newlines.
+			zoneIndex := strings.Index(host, "%25")
+			if zoneIndex >= 0 {
+				host1, err := plain.UnEscapeUrl(host[:zoneIndex], plain.EscapingHost)
+				if err != nil {
+					return nil, err
+				}
+				host2, err := plain.UnEscapeUrl(host[zoneIndex:len(host)-1], plain.EscapingZone)
+				if err != nil {
+					return nil, err
+				}
+				obj.Host = host1 + host2
+			} else if unesc, err := plain.UnEscapeUrl(host, plain.EscapingHost); err == nil {
+				obj.Host = unesc
+			} else {
+				return nil, err
+			}
+		} else if unesc, err := plain.UnEscapeUrl(host, plain.EscapingHost); err == nil {
+			obj.Host = unesc
+		} else {
+			return nil, err
+		}
+	}
+
+	if unesc, err := plain.UnEscapeUrl(obj.Username, plain.EscapingUserPassword); err == nil {
+		obj.Username = unesc
+	} else {
+		return nil, err
+	}
+
+	if unesc, err := plain.UnEscapeUrl(obj.Password, plain.EscapingUserPassword); err == nil {
+		obj.Password = unesc
+	} else {
+		return nil, err
+	}
+
+	if unesc, err := plain.UnEscapeUrl(obj.Path, plain.EscapingPath); err == nil {
+		obj.Path = unesc
+	} else {
+		return nil, err
+	}
+
+	if unesc, err := plain.UnEscapeUrl(obj.Fragment, plain.EscapingFragment); err == nil {
+		obj.Fragment = unesc
+	} else {
+		return nil, err
 	}
 
 	return obj, nil
 }
 
+// Url represents URL with its components.
 type Url struct {
 	Scheme, Username, Password,
-	Host, Path, Hash string
+	Host, Path, Fragment string
 	Port uint16
 
 	Query Query
 }
 
-func (url *Url) setPort(val string) bool {
-	num, err := strconv.ParseUint(val, 10, 16)
-	if err != nil {
-		return false
-	}
-	url.Port = uint16(num)
-	return true
-}
-
+// String returns the string representation of the URL.
+// It constructs the URL from its components, escaping them as necessary.
 func (url *Url) String() string {
 	var builder strings.Builder
 
@@ -246,7 +244,7 @@ func (url *Url) String() string {
 			builder.WriteByte('@')
 		}
 
-		builder.WriteString(url.Host)
+		builder.WriteString(plain.EscapeUrl(url.Host, plain.EscapingHost))
 
 		if url.Port > 0 {
 			builder.WriteByte(':')
@@ -258,14 +256,14 @@ func (url *Url) String() string {
 		builder.WriteString(plain.EscapeUrl(url.Path, plain.EscapingPath))
 	}
 
-	if url.Query != nil || len(url.Query) > 0 {
+	if url.Query.Any() {
 		builder.WriteByte('?')
 		builder.WriteString(url.Query.String())
 	}
 
-	if len(url.Hash) > 0 {
+	if len(url.Fragment) > 0 {
 		builder.WriteByte('#')
-		builder.WriteString(plain.EscapeUrl(url.Hash, plain.EscapingFragment))
+		builder.WriteString(plain.EscapeUrl(url.Fragment, plain.EscapingFragment))
 	}
 
 	return builder.String()
