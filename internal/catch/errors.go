@@ -29,9 +29,6 @@ func CatchCommonErr(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return specs.ErrTimeout
 	}
-	if errors.Is(err, context.Canceled) {
-		return specs.ErrCancelled
-	}
 	return err
 }
 
@@ -46,6 +43,11 @@ func CatchContextCancel(ctx context.Context) error {
 func TryWrapOpErr(op specs.GigletOp, err error) error {
 	if err == nil {
 		return nil
+	}
+	if errors.Is(err, specs.ErrCancelled) ||
+		errors.Is(err, specs.ErrTimeout) ||
+		errors.Is(err, specs.ErrClosed) {
+		return err
 	}
 	if _, ok := err.(*specs.GigletError); ok {
 		return err

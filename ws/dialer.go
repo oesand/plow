@@ -159,6 +159,7 @@ func (dialer *Dialer) dial(ctx context.Context, client *giglet.Client, url *spec
 	}
 
 	wsConn := newWsConn(
+		ctx,
 		conn,
 		false,
 		compression,

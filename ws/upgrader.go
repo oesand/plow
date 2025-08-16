@@ -106,6 +106,7 @@ func (upgrader *Upgrader) Upgrade(req giglet.Request, handler Handler) giglet.Re
 		conn.SetDeadline(time.Time{})
 
 		wsConn := newWsConn(
+			ctx,
 			conn,
 			true,
 			compression,

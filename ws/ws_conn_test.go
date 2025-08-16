@@ -2,9 +2,16 @@ package ws
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
+	"github.com/oesand/giglet"
 	"github.com/oesand/giglet/specs"
+	"golang.org/x/net/context"
+	"golang.org/x/net/websocket"
 	"io"
 	"net"
+	"net/http"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -13,8 +20,9 @@ func newTestPipeConn(t *testing.T, compress bool) (server, client *wsConn) {
 	t.Helper()
 	s, c := net.Pipe()
 	timeout := 2 * time.Second
-	server = newWsConn(s, true, compress, 1024, timeout, timeout, "ws")
-	client = newWsConn(c, false, compress, 1024, timeout, timeout, "ws")
+	ctx := context.Background()
+	server = newWsConn(ctx, s, true, compress, 1024, timeout, timeout, "ws")
+	client = newWsConn(ctx, c, false, compress, 1024, timeout, timeout, "ws")
 	return
 }
 
@@ -23,7 +31,7 @@ func TestWsConn_AliveAndClose(t *testing.T) {
 	defer server.Close()
 	defer client.Close()
 
-	conn := newWsConn(server, true, false, 1024, time.Second, time.Second, "test")
+	conn := newWsConn(context.Background(), server, true, false, 1024, time.Second, time.Second, "test")
 	if !conn.Alive() {
 		t.Fatal("conn should be alive initially")
 	}
@@ -277,12 +285,9 @@ func TestClient_CompressTextFrame(t *testing.T) {
 	}
 }
 
-// TODO : Add tests with built-in websocket package
+// Test conn with net/websocket package
 
-/*
-
-
-func TestDial(t *testing.T) {
+func TestDialNetWebsocket(t *testing.T) {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -291,32 +296,41 @@ func TestDial(t *testing.T) {
 
 	t.Logf("Listening on %s", listener.Addr().String())
 
+	var input = "000"
 	wsServer := websocket.Server{}
 	wsServer.Handler = func(conn *websocket.Conn) {
 		for {
-			var buf = make([]byte, 4)
+			var buf = make([]byte, len(input)+1)
 			_, err := io.ReadFull(conn, buf)
-			//buf, err := io.ReadAll(conn)
 			if err != nil {
 				t.Error(err)
 				break
 			}
+			if !bytes.Equal(buf, []byte(input)) {
+				t.Fatalf("Invalid server received: %s \n", buf)
+			}
 			t.Logf("Server received: %s \n", buf)
-			//fmt.Fprintf(conn, "Answer: %s", buf)
-			conn.Write(buf)
+			fmt.Fprintf(conn, "Answer: %s", buf)
 		}
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
 	go func() {
 		err = http.Serve(listener, wsServer)
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return
+		}
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 	}()
 
 	client := giglet.DefaultClient()
-
-	conn, err := DefaultDialer().Dial(client, *specs.MustParseUrl("ws://" + listener.Addr().String()))
+	dialer := DefaultDialer()
+	dialer.EnableCompression = false
+	conn, err := dialer.DialContext(ctx, client, specs.MustParseUrl("ws://"+listener.Addr().String()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,75 +338,124 @@ func TestDial(t *testing.T) {
 	t.Logf("Connected to %s", conn.RemoteAddr().String())
 
 	var i int
-	var input string = "000"
 	for conn.Alive() {
+		if i >= 3 {
+			break
+		}
+
 		input += strconv.Itoa(i)
 		_, err = conn.Write([]byte(input))
 		if err != nil {
 			t.Error(err)
 			break
 		}
-		i++
 
 		t.Logf("Sent: %s \n", input)
 
-		//buf := make([]byte, len(input))
 		buf, err := io.ReadAll(conn)
-		//_, err = conn.Read(buf)
-		if err != nil && err != io.EOF {
+		if err != nil {
 			t.Error(err)
 			break
 		}
+		if !bytes.Equal(buf, []byte("Answer: "+input)) {
+			t.Fatalf("Invalid received: %s \n", buf)
+		}
 		t.Logf("Client received: %s \n", buf)
+		i++
 
-		time.Sleep(1 * time.Second)
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 
-
-
-func TestWs(t *testing.T) {
-	//conn, err := websocket.Dial("wss://ws.postman-echo.com/raw", "", "http://localhost/")
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-
-	url := specs.MustParseUrl("wss://ws.postman-echo.com/raw")
-	conn, err := DefaultDialer().Dial(giglet.DefaultClient(), url)
+func TestUpgraderNetWebsocket(t *testing.T) {
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer listener.Close()
+
+	t.Logf("Listening on %s", listener.Addr().String())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var i int
+	var input = "000"
+	upgrader := DefaultUpgrader()
+	upgrader.EnableCompression = false
+	wsServer := giglet.DefaultServer(giglet.HandlerFunc(func(ctx context.Context, request giglet.Request) giglet.Response {
+		return upgrader.Upgrade(request, func(ctx context.Context, conn Conn) {
+			t.Logf("Received conn %s", conn.RemoteAddr().String())
+			for conn.Alive() {
+				buf, err := io.ReadAll(conn)
+				if err != nil {
+					t.Error(err)
+					break
+				}
+				if !bytes.Equal(buf, []byte(input)) {
+					t.Fatalf("Invalid server received: %s \n", buf)
+				}
+				t.Logf("Server received: %s \n", buf)
+				fmt.Fprintf(conn, "Answer: %s", buf)
+
+				i++
+
+				time.Sleep(50 * time.Millisecond)
+			}
+			t.Logf("Dead server conn")
+			defer cancel()
+		})
+	}))
+
+	go func() {
+		err = wsServer.Serve(listener)
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return
+		}
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	conn, err := websocket.Dial("ws://"+listener.Addr().String(), "", "http://127.0.0.1/")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	t.Logf("Connected to %s", conn.RemoteAddr().String())
 
-	fmt.Printf("Compression: %v \n", conn.(*wsConn).compressEnabled)
+	go func() {
+		for {
+			if i >= 5 {
+				break
+			}
 
-	var i int
-	var input string = "000"
-	for {
-		input += strconv.Itoa(i)
-		_, err = conn.WriteText(input)
-		if err != nil {
-			t.Error(err)
-			break
+			input += strconv.Itoa(i)
+			_, err = conn.Write([]byte(input))
+			if err != nil {
+				t.Error(err)
+				break
+			}
+			t.Logf("Sent client: %s\n", input)
+
+			var buf = make([]byte, len(input)+8)
+			_, err := io.ReadFull(conn, buf)
+			if err != nil {
+				t.Error(err)
+				break
+			}
+			if !bytes.Equal(buf, []byte("Answer: "+input)) {
+				t.Fatalf("Invalid client received: %s \n", buf)
+			}
+			t.Logf("Client received: %s \n", buf)
 		}
-		i++
+	}()
 
-		t.Logf("Sent: %s \n", input)
+	select {
+	case <-ctx.Done():
+	}
 
-		//buf := make([]byte, len(input))
-		buf, err := io.ReadAll(conn)
-		//_, err = conn.Read(buf)
-		if err != nil {
-			t.Error(err)
-			break
-		}
-		t.Logf("Received: %s \n", buf)
-
-		time.Sleep(1 * time.Second)
+	if i < 5 {
+		t.Fatal("Invalid transfer count:", i)
 	}
 }
-
-
-*/

@@ -2,6 +2,7 @@ package ws
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
@@ -16,6 +17,7 @@ import (
 )
 
 func newWsConn(
+	ctx context.Context,
 	conn net.Conn,
 	isServer bool,
 	compressEnabled bool,
@@ -30,6 +32,7 @@ func newWsConn(
 	writer := stream.DefaultBufioWriterPool.Get(conn)
 	rws := bufio.NewReadWriter(reader, writer)
 	return &wsConn{
+		ctx:  ctx,
 		conn: conn,
 		rws:  rws,
 
@@ -47,6 +50,7 @@ func newWsConn(
 type wsConn struct {
 	_ internal.NoCopy
 
+	ctx  context.Context
 	conn net.Conn
 	rws  *bufio.ReadWriter
 
@@ -85,7 +89,7 @@ func (conn *wsConn) Read(buf []byte) (int, error) {
 		return 0, specs.ErrClosed
 	}
 
-	err := conn.applyTimeout()
+	err := conn.beforeOp()
 	if err != nil {
 		return 0, err
 	}
@@ -135,7 +139,7 @@ func (conn *wsConn) Write(payload []byte) (int, error) {
 		return 0, specs.ErrClosed
 	}
 
-	err := conn.applyTimeout()
+	err := conn.beforeOp()
 	if err != nil {
 		return 0, err
 	}
@@ -151,7 +155,7 @@ func (conn *wsConn) WriteText(payload string) (int, error) {
 		return 0, specs.ErrClosed
 	}
 
-	err := conn.applyTimeout()
+	err := conn.beforeOp()
 	if err != nil {
 		return 0, err
 	}
@@ -167,7 +171,7 @@ func (conn *wsConn) WriteClose(closeCode WsCloseCode) error {
 		return specs.ErrClosed
 	}
 
-	err := conn.applyTimeout()
+	err := conn.beforeOp()
 	if err != nil {
 		return err
 	}
@@ -202,7 +206,7 @@ func (conn *wsConn) Close() error {
 
 // Private functions. Ensure to call it without the mutex locked.
 
-func (conn *wsConn) applyTimeout() error {
+func (conn *wsConn) beforeOp() error {
 	if conn.readTimeout > 0 {
 		err := conn.conn.SetReadDeadline(time.Now().Add(conn.readTimeout))
 		if err != nil {
@@ -215,6 +219,10 @@ func (conn *wsConn) applyTimeout() error {
 		if err != nil {
 			return err
 		}
+	}
+
+	if err := catch.CatchContextCancel(conn.ctx); err != nil {
+		return err
 	}
 
 	return nil
