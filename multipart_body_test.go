@@ -1,9 +1,9 @@
-package giglet
+package plow
 
 import (
 	"bytes"
 	"context"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/specs"
 	"mime/multipart"
 	"net"
 	"net/http"

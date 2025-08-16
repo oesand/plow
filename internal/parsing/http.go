@@ -2,7 +2,7 @@ package parsing
 
 import (
 	"bytes"
-	"github.com/oesand/giglet/internal"
+	"github.com/oesand/plow/internal"
 	"strconv"
 )
 

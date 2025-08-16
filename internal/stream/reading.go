@@ -2,7 +2,7 @@ package stream
 
 import (
 	"bufio"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/specs"
 )
 
 func ReadBufferLine(reader *bufio.Reader, limit int64) ([]byte, error) {

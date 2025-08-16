@@ -1,4 +1,4 @@
-package giglet
+package plow
 
 import (
 	"bufio"
@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"github.com/andybalholm/brotli"
 	"github.com/armon/go-socks5"
-	"github.com/oesand/giglet/internal/server_ops"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/internal/server_ops"
+	"github.com/oesand/plow/specs"
 	"io"
 	"net"
 	"net/http"

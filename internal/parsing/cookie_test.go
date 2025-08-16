@@ -1,7 +1,7 @@
 package parsing
 
 import (
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/specs"
 	"maps"
 	"reflect"
 	"testing"

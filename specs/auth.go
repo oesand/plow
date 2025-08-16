@@ -3,7 +3,7 @@ package specs
 import (
 	"encoding/base64"
 	"errors"
-	"github.com/oesand/giglet/internal"
+	"github.com/oesand/plow/internal"
 	"strings"
 )
 

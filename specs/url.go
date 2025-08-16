@@ -2,7 +2,7 @@ package specs
 
 import (
 	"errors"
-	"github.com/oesand/giglet/internal/plain"
+	"github.com/oesand/plow/internal/plain"
 	"strconv"
 	"strings"
 )

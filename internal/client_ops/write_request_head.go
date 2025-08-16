@@ -2,7 +2,7 @@ package client_ops
 
 import (
 	"bytes"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/specs"
 	"io"
 )
 

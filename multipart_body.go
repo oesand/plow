@@ -1,10 +1,10 @@
-package giglet
+package plow
 
 import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/specs"
 	"io"
 	"mime"
 	"mime/multipart"

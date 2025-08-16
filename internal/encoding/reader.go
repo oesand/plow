@@ -5,7 +5,7 @@ import (
 	"compress/zlib"
 	"fmt"
 	"github.com/andybalholm/brotli"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/specs"
 	"io"
 )
 

@@ -1,4 +1,4 @@
-package giglet
+package plow
 
 import (
 	"bytes"
@@ -7,11 +7,11 @@ import (
 	"context"
 	"crypto/tls"
 	"github.com/andybalholm/brotli"
-	"github.com/oesand/giglet/internal/client_ops"
-	"github.com/oesand/giglet/internal/encoding"
-	"github.com/oesand/giglet/internal/server_ops"
-	"github.com/oesand/giglet/internal/testing_ops"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/internal/client_ops"
+	"github.com/oesand/plow/internal/encoding"
+	"github.com/oesand/plow/internal/server_ops"
+	"github.com/oesand/plow/internal/testing_ops"
+	"github.com/oesand/plow/specs"
 	"io"
 	"net"
 	"net/http"

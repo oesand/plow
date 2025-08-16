@@ -3,9 +3,9 @@ package proxy
 import (
 	"context"
 	"errors"
-	"github.com/oesand/giglet/internal/client_ops"
-	"github.com/oesand/giglet/internal/stream"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/internal/client_ops"
+	"github.com/oesand/plow/internal/stream"
+	"github.com/oesand/plow/specs"
 	"net"
 	"net/http"
 )

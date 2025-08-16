@@ -1,4 +1,4 @@
-module github.com/oesand/giglet
+module github.com/oesand/plow
 
 go 1.23.2
 

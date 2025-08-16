@@ -2,16 +2,16 @@ package ws
 
 import (
 	"context"
-	"github.com/oesand/giglet"
-	"github.com/oesand/giglet/mock"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow"
+	"github.com/oesand/plow/mock"
+	"github.com/oesand/plow/specs"
 	"testing"
 )
 
 func TestUpgrader_Upgrade_FailureCases(t *testing.T) {
 	cases := []struct {
 		name       string
-		req        giglet.Request
+		req        plow.Request
 		wantStatus specs.StatusCode
 	}{
 		{

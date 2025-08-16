@@ -1,9 +1,9 @@
-package giglet
+package plow
 
 import (
 	"bytes"
 	"fmt"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/specs"
 	"io"
 	"net/http"
 	"net/http/httptest"

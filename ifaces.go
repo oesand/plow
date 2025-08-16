@@ -1,7 +1,7 @@
-package giglet
+package plow
 
 import (
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/specs"
 	"io"
 	"net"
 )

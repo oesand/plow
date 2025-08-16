@@ -1,10 +1,10 @@
-package giglet
+package plow
 
 import (
 	"context"
 	"fmt"
-	"github.com/oesand/giglet/internal/catch"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/internal/catch"
+	"github.com/oesand/plow/specs"
 	"sync"
 )
 

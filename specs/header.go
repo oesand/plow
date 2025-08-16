@@ -1,8 +1,8 @@
 package specs
 
 import (
-	"github.com/oesand/giglet/internal"
-	"github.com/oesand/giglet/internal/plain"
+	"github.com/oesand/plow/internal"
+	"github.com/oesand/plow/internal/plain"
 	"iter"
 	"maps"
 )

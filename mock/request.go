@@ -1,9 +1,9 @@
 package mock
 
 import (
-	"github.com/oesand/giglet"
-	"github.com/oesand/giglet/internal/proxy"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow"
+	"github.com/oesand/plow/internal/proxy"
+	"github.com/oesand/plow/specs"
 	"io"
 	"net"
 )
@@ -28,11 +28,11 @@ func DefaultRequest() *RequestBuilder {
 	}
 }
 
-// RequestBuilder is used to build a giglet.Request with customizable fields.
+// RequestBuilder is used to build a plow.Request with customizable fields.
 type RequestBuilder struct {
 	protoMajor, protoMinor uint16
 
-	hijacker   giglet.HijackHandler
+	hijacker   plow.HijackHandler
 	remoteAddr net.Addr
 	method     specs.HttpMethod
 	url        *specs.Url
@@ -88,7 +88,7 @@ func (b *RequestBuilder) ConfHeader(conf func(*specs.Header)) *RequestBuilder {
 }
 
 // Hijacker returns the hijack handler for the request.
-func (b *RequestBuilder) Hijacker() giglet.HijackHandler {
+func (b *RequestBuilder) Hijacker() plow.HijackHandler {
 	return b.hijacker
 }
 
@@ -98,8 +98,8 @@ func (b *RequestBuilder) Body(body io.ReadCloser) *RequestBuilder {
 	return b
 }
 
-// Request returns a giglet.Request based on the current state of the RequestBuilder.
-func (b *RequestBuilder) Request() giglet.Request {
+// Request returns a plow.Request based on the current state of the RequestBuilder.
+func (b *RequestBuilder) Request() plow.Request {
 	if b.header == nil {
 		b.header = specs.NewHeader()
 	}
@@ -121,7 +121,7 @@ func (r request) RemoteAddr() net.Addr {
 	return r.b.remoteAddr
 }
 
-func (r request) Hijack(handler giglet.HijackHandler) {
+func (r request) Hijack(handler plow.HijackHandler) {
 	r.b.hijacker = handler
 }
 

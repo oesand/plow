@@ -1,9 +1,9 @@
-package giglet
+package plow
 
 import (
 	"fmt"
-	"github.com/oesand/giglet/internal"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/internal"
+	"github.com/oesand/plow/specs"
 	"io"
 )
 

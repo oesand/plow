@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"io"
 
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/specs"
 )
 
 type wsFrameType byte

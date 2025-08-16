@@ -1,7 +1,7 @@
 package proxy
 
 import (
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/specs"
 	"net"
 	"strconv"
 )

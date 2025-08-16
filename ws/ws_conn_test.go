@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/oesand/giglet"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow"
+	"github.com/oesand/plow/specs"
 	"golang.org/x/net/context"
 	"golang.org/x/net/websocket"
 	"io"
@@ -330,7 +330,7 @@ func TestDialNetWebsocket(t *testing.T) {
 		}
 	}()
 
-	client := giglet.DefaultClient()
+	client := plow.DefaultClient()
 	dialer := DefaultDialer()
 	dialer.EnableCompression = false
 	conn, err := dialer.DialContext(ctx, client, specs.MustParseUrl("ws://"+listener.Addr().String()))
@@ -386,7 +386,7 @@ func TestUpgraderNetWebsocket(t *testing.T) {
 	var input = "000"
 	upgrader := DefaultUpgrader()
 	upgrader.EnableCompression = false
-	wsServer := giglet.DefaultServer(giglet.HandlerFunc(func(ctx context.Context, request giglet.Request) giglet.Response {
+	wsServer := plow.DefaultServer(plow.HandlerFunc(func(ctx context.Context, request plow.Request) plow.Response {
 		return upgrader.Upgrade(request, func(ctx context.Context, conn Conn) {
 			t.Logf("Received conn %s", conn.RemoteAddr().String())
 			for conn.Alive() {

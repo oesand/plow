@@ -3,9 +3,9 @@ package ws
 import (
 	"context"
 	"fmt"
-	"github.com/oesand/giglet"
-	"github.com/oesand/giglet/internal"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow"
+	"github.com/oesand/plow/internal"
+	"github.com/oesand/plow/specs"
 	"slices"
 	"strings"
 	"time"
@@ -45,17 +45,17 @@ type Dialer struct {
 }
 
 // Dial creates a WebSocket connection to the specified URL using the provided client.
-func (dialer *Dialer) Dial(client *giglet.Client, url *specs.Url, configure ...func(giglet.ClientRequest)) (Conn, error) {
+func (dialer *Dialer) Dial(client *plow.Client, url *specs.Url, configure ...func(plow.ClientRequest)) (Conn, error) {
 	ctx := context.Background()
 	return dialer.dial(ctx, client, url, configure...)
 }
 
 // DialContext creates a WebSocket connection to the specified URL using the provided client and context.
-func (dialer *Dialer) DialContext(ctx context.Context, client *giglet.Client, url *specs.Url, configure ...func(giglet.ClientRequest)) (Conn, error) {
+func (dialer *Dialer) DialContext(ctx context.Context, client *plow.Client, url *specs.Url, configure ...func(plow.ClientRequest)) (Conn, error) {
 	return dialer.dial(ctx, client, url, configure...)
 }
 
-func (dialer *Dialer) dial(ctx context.Context, client *giglet.Client, url *specs.Url, configure ...func(giglet.ClientRequest)) (Conn, error) {
+func (dialer *Dialer) dial(ctx context.Context, client *plow.Client, url *specs.Url, configure ...func(plow.ClientRequest)) (Conn, error) {
 	if ctx == nil {
 		panic("nil Context pointer")
 	}
@@ -83,8 +83,8 @@ func (dialer *Dialer) dial(ctx context.Context, client *giglet.Client, url *spec
 	httpUrl := *url
 	httpUrl.Scheme = httpScheme
 
-	hijacker, ctx := giglet.WithTransportHijacker(ctx)
-	req := giglet.EmptyRequest(specs.HttpMethodGet, &httpUrl)
+	hijacker, ctx := plow.WithTransportHijacker(ctx)
+	req := plow.EmptyRequest(specs.HttpMethodGet, &httpUrl)
 
 	for _, conf := range configure {
 		conf(req)

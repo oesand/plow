@@ -1,10 +1,10 @@
-package giglet
+package plow
 
 import (
 	"context"
 	"crypto/tls"
-	"github.com/oesand/giglet/internal/server_ops"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/internal/server_ops"
+	"github.com/oesand/plow/specs"
 	"net"
 )
 

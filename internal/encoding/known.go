@@ -1,6 +1,6 @@
 package encoding
 
-import "github.com/oesand/giglet/specs"
+import "github.com/oesand/plow/specs"
 
 const DefaultAcceptEncoding = specs.ContentEncodingGzip + ", " +
 	specs.ContentEncodingDeflate + ", " + specs.ContentEncodingBrotli

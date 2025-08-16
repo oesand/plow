@@ -3,9 +3,9 @@ package parsing
 import (
 	"bufio"
 	"context"
-	"github.com/oesand/giglet/internal/catch"
-	"github.com/oesand/giglet/internal/stream"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/internal/catch"
+	"github.com/oesand/plow/internal/stream"
+	"github.com/oesand/plow/specs"
 	"io"
 )
 

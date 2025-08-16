@@ -2,8 +2,8 @@ package server_ops
 
 import (
 	"bytes"
-	"github.com/oesand/giglet/internal/parsing"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/internal/parsing"
+	"github.com/oesand/plow/specs"
 	"io"
 	"strconv"
 )
@@ -55,7 +55,7 @@ func WriteResponseHead(writer io.Writer, is11 bool, code specs.StatusCode, heade
 
 	i, err := buf.WriteTo(writer)
 	if err != nil {
-		return -1, &specs.GigletError{
+		return -1, &specs.OpError{
 			Op:  "write",
 			Err: err,
 		}

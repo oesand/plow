@@ -2,9 +2,9 @@ package ws
 
 import (
 	"context"
-	"github.com/oesand/giglet"
-	"github.com/oesand/giglet/internal"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow"
+	"github.com/oesand/plow/internal"
+	"github.com/oesand/plow/specs"
 	"net"
 	"strings"
 	"time"
@@ -51,24 +51,24 @@ type Upgrader struct {
 // hijacks the connection and invokes the provided handler with a new WebSocket
 // connection. The response is returned with the necessary headers to complete the
 // WebSocket handshake.
-func (upgrader *Upgrader) Upgrade(req giglet.Request, handler Handler) giglet.Response {
+func (upgrader *Upgrader) Upgrade(req plow.Request, handler Handler) plow.Response {
 	if req.Method() != specs.HttpMethodGet {
-		return giglet.TextResponse(specs.StatusCodeMethodNotAllowed, specs.ContentTypePlain,
+		return plow.TextResponse(specs.StatusCodeMethodNotAllowed, specs.ContentTypePlain,
 			"websocket: upgrading required request method - GET")
 	} else if !strings.Contains(strings.ToLower(req.Header().Get("Connection")), "upgrade") {
-		return giglet.TextResponse(specs.StatusCodeBadRequest, specs.ContentTypePlain,
+		return plow.TextResponse(specs.StatusCodeBadRequest, specs.ContentTypePlain,
 			"websocket: 'Upgrade' token not found in 'Connection' header")
 	} else if !strings.EqualFold(req.Header().Get("Upgrade"), "websocket") {
-		return giglet.TextResponse(specs.StatusCodeBadRequest, specs.ContentTypePlain,
+		return plow.TextResponse(specs.StatusCodeBadRequest, specs.ContentTypePlain,
 			"websocket: 'websocket' token not found in 'Upgrade' header")
 	} else if req.Header().Get("Sec-Websocket-Version") != "13" {
-		return giglet.TextResponse(specs.StatusCodeNotImplemented, specs.ContentTypePlain,
+		return plow.TextResponse(specs.StatusCodeNotImplemented, specs.ContentTypePlain,
 			"websocket: supports only websocket 13 version")
 	}
 
 	challengeKey := req.Header().Get("Sec-Websocket-Key")
 	if challengeKey == "" {
-		return giglet.TextResponse(specs.StatusCodeBadRequest, specs.ContentTypePlain,
+		return plow.TextResponse(specs.StatusCodeBadRequest, specs.ContentTypePlain,
 			"websocket: not a websocket handshake: `Sec-WebSocket-Key' header is missing or blank")
 	}
 
@@ -94,7 +94,7 @@ func (upgrader *Upgrader) Upgrade(req giglet.Request, handler Handler) giglet.Re
 		if upgrader.SelectProtocol != nil {
 			selectedProtocol = upgrader.SelectProtocol(challengeProtocols)
 			if selectedProtocol == "" {
-				return giglet.TextResponse(specs.StatusCodeNotImplemented, specs.ContentTypePlain,
+				return plow.TextResponse(specs.StatusCodeNotImplemented, specs.ContentTypePlain,
 					"websocket: not found supported protocols from `Sec-WebSocket-Protocol` header")
 			}
 		} else {
@@ -124,7 +124,7 @@ func (upgrader *Upgrader) Upgrade(req giglet.Request, handler Handler) giglet.Re
 
 	acceptKey := computeAcceptKey(challengeKey)
 
-	return giglet.EmptyResponse(specs.StatusCodeSwitchingProtocols, func(resp giglet.Response) {
+	return plow.EmptyResponse(specs.StatusCodeSwitchingProtocols, func(resp plow.Response) {
 		resp.Header().Set("Upgrade", "websocket")
 		resp.Header().Set("Connection", "Upgrade")
 		resp.Header().Set("Sec-WebSocket-Accept", acceptKey)

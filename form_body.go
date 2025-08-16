@@ -1,9 +1,9 @@
-package giglet
+package plow
 
 import (
 	"errors"
 	"fmt"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/specs"
 	"io"
 	"mime"
 )

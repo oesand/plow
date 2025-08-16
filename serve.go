@@ -1,15 +1,15 @@
-package giglet
+package plow
 
 import (
 	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
-	"github.com/oesand/giglet/internal/catch"
-	"github.com/oesand/giglet/internal/encoding"
-	"github.com/oesand/giglet/internal/server_ops"
-	"github.com/oesand/giglet/internal/stream"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/internal/catch"
+	"github.com/oesand/plow/internal/encoding"
+	"github.com/oesand/plow/internal/server_ops"
+	"github.com/oesand/plow/internal/stream"
+	"github.com/oesand/plow/specs"
 	"io"
 	"net"
 	"net/http/httputil"

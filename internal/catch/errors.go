@@ -3,7 +3,7 @@ package catch
 import (
 	"context"
 	"errors"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/specs"
 	"io"
 	"net"
 )
@@ -40,7 +40,7 @@ func CatchContextCancel(ctx context.Context) error {
 	return TryWrapOpErr("cause", err)
 }
 
-func TryWrapOpErr(op specs.GigletOp, err error) error {
+func TryWrapOpErr(op specs.OpName, err error) error {
 	if err == nil {
 		return nil
 	}
@@ -49,10 +49,10 @@ func TryWrapOpErr(op specs.GigletOp, err error) error {
 		errors.Is(err, specs.ErrClosed) {
 		return err
 	}
-	if _, ok := err.(*specs.GigletError); ok {
+	if _, ok := err.(*specs.OpError); ok {
 		return err
 	}
-	return &specs.GigletError{
+	return &specs.OpError{
 		Op:  op,
 		Err: err,
 	}

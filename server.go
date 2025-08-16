@@ -1,9 +1,9 @@
-package giglet
+package plow
 
 import (
 	"crypto/tls"
 	"errors"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/specs"
 	"net"
 	"slices"
 	"sync"

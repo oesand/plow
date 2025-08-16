@@ -1,14 +1,14 @@
-package giglet
+package plow
 
 import (
 	"bufio"
 	"bytes"
 	"context"
-	"github.com/oesand/giglet/internal"
-	"github.com/oesand/giglet/internal/client_ops"
-	"github.com/oesand/giglet/internal/server_ops"
-	"github.com/oesand/giglet/internal/stream"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/internal"
+	"github.com/oesand/plow/internal/client_ops"
+	"github.com/oesand/plow/internal/server_ops"
+	"github.com/oesand/plow/internal/stream"
+	"github.com/oesand/plow/specs"
 	"io"
 	"net"
 	"net/http"

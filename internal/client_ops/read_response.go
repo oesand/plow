@@ -3,10 +3,10 @@ package client_ops
 import (
 	"bufio"
 	"context"
-	"github.com/oesand/giglet/internal/catch"
-	"github.com/oesand/giglet/internal/parsing"
-	"github.com/oesand/giglet/internal/stream"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/internal/catch"
+	"github.com/oesand/plow/internal/parsing"
+	"github.com/oesand/plow/internal/stream"
+	"github.com/oesand/plow/specs"
 )
 
 func ReadResponse(ctx context.Context, reader *bufio.Reader, lineLimit int64, totalLimit int64) (*HttpClientResponse, error) {

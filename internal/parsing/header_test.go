@@ -3,7 +3,7 @@ package parsing
 import (
 	"bufio"
 	"context"
-	"github.com/oesand/giglet/specs"
+	"github.com/oesand/plow/specs"
 	"reflect"
 	"strings"
 	"testing"
