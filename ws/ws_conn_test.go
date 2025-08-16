@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -379,7 +380,6 @@ func TestUpgraderNetWebsocket(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	var i int
 	var input = "000"
 	upgrader := DefaultUpgrader()
 	upgrader.EnableCompression = false
@@ -397,8 +397,6 @@ func TestUpgraderNetWebsocket(t *testing.T) {
 				}
 				t.Logf("Server received: %s \n", buf)
 				fmt.Fprintf(conn, "Answer: %s", buf)
-
-				i++
 
 				time.Sleep(50 * time.Millisecond)
 			}
@@ -424,19 +422,21 @@ func TestUpgraderNetWebsocket(t *testing.T) {
 
 	t.Logf("Connected to %s", conn.RemoteAddr().String())
 
+	var i int32
 	go func() {
 		for {
 			if i >= 5 {
 				break
 			}
 
-			input += strconv.Itoa(i)
+			input += strconv.Itoa(int(i))
 			_, err = conn.Write([]byte(input))
 			if err != nil {
 				t.Error(err)
 				break
 			}
 			t.Logf("Sent client: %s\n", input)
+			atomic.AddInt32(&i, 1)
 
 			var buf = make([]byte, len(input)+8)
 			_, err := io.ReadFull(conn, buf)
