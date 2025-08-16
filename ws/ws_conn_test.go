@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -423,39 +422,29 @@ func TestUpgraderNetWebsocket(t *testing.T) {
 	t.Logf("Connected to %s", conn.RemoteAddr().String())
 
 	var i int32
-	go func() {
-		for {
-			if i >= 5 {
-				break
-			}
-
-			input += strconv.Itoa(int(i))
-			_, err = conn.Write([]byte(input))
-			if err != nil {
-				t.Error(err)
-				break
-			}
-			t.Logf("Sent client: %s\n", input)
-			atomic.AddInt32(&i, 1)
-
-			var buf = make([]byte, len(input)+8)
-			_, err := io.ReadFull(conn, buf)
-			if err != nil {
-				t.Error(err)
-				break
-			}
-			if !bytes.Equal(buf, []byte("Answer: "+input)) {
-				t.Fatalf("Invalid client received: %s \n", buf)
-			}
-			t.Logf("Client received: %s \n", buf)
+	for {
+		if i >= 5 {
+			break
 		}
-	}()
 
-	select {
-	case <-ctx.Done():
-	}
+		input += strconv.Itoa(int(i))
+		_, err = conn.Write([]byte(input))
+		if err != nil {
+			t.Error(err)
+			break
+		}
+		t.Logf("Sent client: %s\n", input)
+		i++
 
-	if i < 5 {
-		t.Fatal("Invalid transfer count:", i)
+		var buf = make([]byte, len(input)+8)
+		_, err := io.ReadFull(conn, buf)
+		if err != nil {
+			t.Error(err)
+			break
+		}
+		if !bytes.Equal(buf, []byte("Answer: "+input)) {
+			t.Fatalf("Invalid client received: %s \n", buf)
+		}
+		t.Logf("Client received: %s \n", buf)
 	}
 }
