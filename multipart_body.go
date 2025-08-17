@@ -66,7 +66,7 @@ func MultipartRequest(method specs.HttpMethod, url *specs.Url, filler MultipartW
 	}
 
 	req := &multipartRequest{
-		clientRequest: *newRequest(method, url),
+		ClientRequest: EmptyRequest(method, url),
 		filler:        filler,
 		boundary:      multipartBoundary(),
 	}
@@ -89,7 +89,7 @@ func multipartBoundary() string {
 }
 
 type multipartRequest struct {
-	clientRequest
+	ClientRequest
 	filler   MultipartWriterFiller
 	boundary string
 }

@@ -6,58 +6,46 @@ import (
 	"io"
 )
 
-// NewHeaderResponse creates new [HeaderResponse]
-//
-// if status code unspecified then [specs.StatusCodeOK] will be set
-func NewHeaderResponse(statusCode specs.StatusCode) *HeaderResponse {
-	if statusCode == specs.StatusCodeUndefined {
-		statusCode = specs.StatusCodeOK
-	}
-	return &HeaderResponse{
-		statusCode: statusCode,
-		header:     specs.NewHeader(),
-	}
-}
-
-// HeaderResponse is basic implementation of the [Response] without body
-// to be sent by the [Server].
-type HeaderResponse struct {
-	_ internal.NoCopy
-
-	statusCode specs.StatusCode
-	header     *specs.Header
-}
-
-// StatusCode implementation for [Response.StatusCode] interface
-//
-// if status code unspecified then [specs.StatusCodeOK] will be set
-func (resp *HeaderResponse) StatusCode() specs.StatusCode {
-	if resp.statusCode == specs.StatusCodeUndefined {
-		resp.statusCode = specs.StatusCodeOK
-	}
-	return resp.statusCode
-}
-
-// Header implementation for [Response.Header] interface
-func (resp *HeaderResponse) Header() *specs.Header {
-	if resp.header == nil {
-		resp.header = specs.NewHeader()
-	}
-	return resp.header
-}
-
 // EmptyResponse is implementation for the [Response] without body
 // to be sent by the [Server].
 //
 // if status code unspecified then [specs.StatusCodeOK] will be set
 func EmptyResponse(statusCode specs.StatusCode, configure ...func(Response)) Response {
-	resp := NewHeaderResponse(statusCode)
+	if statusCode == specs.StatusCodeUndefined {
+		statusCode = specs.StatusCodeOK
+	}
+
+	resp := &emptyResponse{
+		statusCode: statusCode,
+		header:     specs.NewHeader(),
+	}
 
 	for _, conf := range configure {
 		conf(resp)
 	}
 
 	return resp
+}
+
+type emptyResponse struct {
+	_ internal.NoCopy
+
+	statusCode specs.StatusCode
+	header     *specs.Header
+}
+
+func (resp *emptyResponse) StatusCode() specs.StatusCode {
+	if resp.statusCode == specs.StatusCodeUndefined {
+		resp.statusCode = specs.StatusCodeOK
+	}
+	return resp.statusCode
+}
+
+func (resp *emptyResponse) Header() *specs.Header {
+	if resp.header == nil {
+		resp.header = specs.NewHeader()
+	}
+	return resp.header
 }
 
 // RedirectResponse is implementation for the [Response] sent by the [Server],
@@ -100,14 +88,18 @@ func TextResponse(statusCode specs.StatusCode, contentType string, text string, 
 // if status code unspecified then [specs.StatusCodeOK] will be set
 // if content type unspecified then [specs.ContentTypeRaw] will be set
 func BufferResponse(statusCode specs.StatusCode, contentType string, buffer []byte, configure ...func(Response)) Response {
+	return newBufferResponse(statusCode, contentType, buffer, configure...)
+}
+
+func newBufferResponse(statusCode specs.StatusCode, contentType string, buffer []byte, configure ...func(Response)) *bufferResponse {
 	if buffer == nil {
 		panic("passed nil buffer")
 	}
 
 	resp := &bufferResponse{
-		HeaderResponse: *NewHeaderResponse(statusCode),
-		buffer:         buffer,
-		contentLength:  int64(len(buffer)),
+		Response:      EmptyResponse(statusCode, configure...),
+		buffer:        buffer,
+		contentLength: int64(len(buffer)),
 	}
 
 	if contentType == specs.ContentTypeUndefined {
@@ -115,15 +107,11 @@ func BufferResponse(statusCode specs.StatusCode, contentType string, buffer []by
 	}
 	resp.Header().Set("Content-Type", contentType)
 
-	for _, conf := range configure {
-		conf(&resp.HeaderResponse)
-	}
-
 	return resp
 }
 
 type bufferResponse struct {
-	HeaderResponse
+	Response
 	buffer        []byte
 	contentLength int64
 }
@@ -150,9 +138,9 @@ func StreamResponse(statusCode specs.StatusCode, contentType string, stream io.R
 	}
 
 	resp := &streamResponse{
-		HeaderResponse: *NewHeaderResponse(statusCode),
-		stream:         stream,
-		contentLength:  contentLength,
+		Response:      EmptyResponse(statusCode, configure...),
+		stream:        stream,
+		contentLength: contentLength,
 	}
 
 	if contentType == specs.ContentTypeUndefined {
@@ -160,15 +148,11 @@ func StreamResponse(statusCode specs.StatusCode, contentType string, stream io.R
 	}
 	resp.Header().Set("Content-Type", contentType)
 
-	for _, conf := range configure {
-		conf(&resp.HeaderResponse)
-	}
-
 	return resp
 }
 
 type streamResponse struct {
-	HeaderResponse
+	Response
 	stream        io.Reader
 	contentLength int64
 }

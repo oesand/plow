@@ -7,40 +7,6 @@ import (
 	"io"
 )
 
-func newRequest(method specs.HttpMethod, url *specs.Url) *clientRequest {
-	if !method.IsValid() {
-		panic("invalid http method")
-	}
-	if url == nil {
-		panic("passed nil url")
-	}
-	return &clientRequest{
-		method: method,
-		url:    *url,
-		header: specs.NewHeader(),
-	}
-}
-
-type clientRequest struct {
-	_ internal.NoCopy
-
-	method specs.HttpMethod
-	url    specs.Url
-	header *specs.Header
-}
-
-func (req *clientRequest) Method() specs.HttpMethod {
-	return req.method
-}
-
-func (req *clientRequest) Url() specs.Url {
-	return req.url
-}
-
-func (req *clientRequest) Header() *specs.Header {
-	return req.header
-}
-
 // EmptyRequest is implementation for the [ClientRequest] without body
 // to be sent by the [Client].
 //
@@ -49,7 +15,37 @@ func EmptyRequest(method specs.HttpMethod, url *specs.Url) ClientRequest {
 	if method == "" {
 		method = specs.HttpMethodGet
 	}
-	return newRequest(method, url)
+	if !method.IsValid() {
+		panic("invalid http method")
+	}
+	if url == nil {
+		panic("passed nil url")
+	}
+	return &emptyRequest{
+		method: method,
+		url:    *url,
+		header: specs.NewHeader(),
+	}
+}
+
+type emptyRequest struct {
+	_ internal.NoCopy
+
+	method specs.HttpMethod
+	url    specs.Url
+	header *specs.Header
+}
+
+func (req *emptyRequest) Method() specs.HttpMethod {
+	return req.method
+}
+
+func (req *emptyRequest) Url() specs.Url {
+	return req.url
+}
+
+func (req *emptyRequest) Header() *specs.Header {
+	return req.header
 }
 
 // TextRequest is implementation for the [ClientRequest]
@@ -84,7 +80,7 @@ func BufferRequest(method specs.HttpMethod, url *specs.Url, contentType string, 
 	}
 
 	req := &bufferRequest{
-		clientRequest: *newRequest(method, url),
+		ClientRequest: EmptyRequest(method, url),
 		buffer:        buffer,
 		contentLength: int64(len(buffer)),
 	}
@@ -98,7 +94,7 @@ func BufferRequest(method specs.HttpMethod, url *specs.Url, contentType string, 
 }
 
 type bufferRequest struct {
-	clientRequest
+	ClientRequest
 	buffer        []byte
 	contentLength int64
 }
@@ -131,7 +127,7 @@ func StreamRequest(method specs.HttpMethod, url *specs.Url, contentType string, 
 	}
 
 	req := &streamRequest{
-		clientRequest: *newRequest(method, url),
+		ClientRequest: EmptyRequest(method, url),
 		stream:        stream,
 		contentLength: contentLength,
 	}
@@ -145,7 +141,7 @@ func StreamRequest(method specs.HttpMethod, url *specs.Url, contentType string, 
 }
 
 type streamRequest struct {
-	clientRequest
+	ClientRequest
 	stream        io.Reader
 	contentLength int64
 }
