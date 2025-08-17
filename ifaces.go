@@ -1,9 +1,10 @@
 package plow
 
 import (
-	"github.com/oesand/plow/specs"
 	"io"
 	"net"
+
+	"github.com/oesand/plow/specs"
 )
 
 // Request is an interface for an HTTP request received by the [Server].
@@ -88,4 +89,10 @@ type BodyWriter interface {
 	// ContentLength specifies size of the body
 	// which can be passed in the 'Content-Length' header.
 	ContentLength() int64
+}
+
+type MarshallResponse interface {
+	Response
+	BodyWriter
+	Instance() any
 }

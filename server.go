@@ -3,11 +3,12 @@ package plow
 import (
 	"crypto/tls"
 	"errors"
-	"github.com/oesand/plow/specs"
 	"net"
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/oesand/plow/specs"
 )
 
 // DefaultServer factory for creating [Server]
@@ -188,7 +189,7 @@ func (srv *Server) ListenAndServe(addr string) error {
 	} else if addr == "" {
 		addr = ":http"
 	}
-	lst, err := net.Listen("tcp", addr)
+	lst, err := net.Listen("tcp4", addr)
 	if err != nil {
 		return err
 	}
@@ -211,7 +212,7 @@ func (srv *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
 	} else if addr == "" {
 		addr = ":http"
 	}
-	lst, err := net.Listen("tcp", addr)
+	lst, err := net.Listen("tcp4", addr)
 	if err != nil {
 		return err
 	}
@@ -233,7 +234,7 @@ func (srv *Server) ListenAndServeTLSRaw(addr string, cert tls.Certificate) error
 	} else if addr == "" {
 		addr = ":http"
 	}
-	lst, err := net.Listen("tcp", addr)
+	lst, err := net.Listen("tcp4", addr)
 	if err != nil {
 		return err
 	}
