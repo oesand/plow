@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -183,10 +184,6 @@ func TestMultipartFormParam(t *testing.T) {
 	}
 }
 
-/*
-
-TODO : fix JsonParam
-
 func TestJsonParam(t *testing.T) {
 	type TestUser struct {
 		Name  string `json:"name"`
@@ -280,16 +277,13 @@ func TestJsonParam(t *testing.T) {
 			}
 
 			if !tt.expectedResp {
-				if result != tt.expectedData {
+				if !reflect.DeepEqual(result, tt.expectedData) {
 					t.Errorf("expected %+v, got %+v", tt.expectedData, result)
 				}
 			}
 		})
 	}
 }
-
-
-*/
 
 func TestRawBodyParam(t *testing.T) {
 	tests := []struct {

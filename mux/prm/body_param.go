@@ -9,29 +9,29 @@ import (
 	"github.com/oesand/plow/specs"
 )
 
-// TODO : Add conditions in body params
-
 // FormParam creates a new ParameterProvider for extracting form data from the request body.
 // It parses application/x-www-form-urlencoded request bodies into a specs.Query map.
-func FormParam() ParameterProvider[specs.Query] {
-	return &formParameter{}
+func FormParam(conditions ...Condition[specs.Query]) ParameterProvider[specs.Query] {
+	return &formParameter{conditions}
 }
 
-type formParameter struct{}
+type formParameter struct {
+	conditions []Condition[specs.Query]
+}
 
 func (fp *formParameter) GetParamValue(_ context.Context, req plow.Request) (specs.Query, plow.Response) {
-	body := req.Body()
-	if body == nil {
-		return nil, ErrorResponse("request body is required")
-	}
-
-	bodyBytes, err := io.ReadAll(body)
+	form, err := plow.ReadForm(req)
 	if err != nil {
-		return nil, ErrorResponse("failed to read request body")
+		return nil, ErrorResponse(err.Error())
 	}
 
-	formData := specs.ParseQuery(string(bodyBytes))
-	return formData, nil
+	for _, condition := range fp.conditions {
+		if err = condition.Validate(form); err != nil {
+			return nil, ErrorResponse(err.Error())
+		}
+	}
+
+	return form, nil
 }
 
 // MultipartFormParam creates a new ParameterProvider for extracting multipart form data from the request body.
@@ -43,55 +43,38 @@ func MultipartFormParam() ParameterProvider[*multipart.Reader] {
 type multipartFormParameter struct{}
 
 func (mfp *multipartFormParameter) GetParamValue(_ context.Context, req plow.Request) (*multipart.Reader, plow.Response) {
-	body := req.Body()
-	if body == nil {
-		return nil, ErrorResponse("request body is required")
-	}
-
 	reader, err := plow.MultipartReader(req)
 	if err != nil {
-		return nil, ErrorResponse("failed to parse multipart form data")
+		return nil, ErrorResponse(err.Error())
 	}
 
 	return reader, nil
 }
 
-/*
-TODO : fix JsonParam to JsonReader
-
-
 // JsonParam creates a new ParameterProvider for extracting and parsing JSON data from the request body.
 // It parses application/json request bodies into the specified generic type T.
-func JsonParam[T any]() ParameterProvider[T] {
-	return &jsonParameter[T]{}
+func JsonParam[T comparable](conditions ...Condition[*T]) ParameterProvider[*T] {
+	return &jsonParameter[T]{conditions}
 }
 
-type jsonParameter[T any] struct{}
-
-func (jp *jsonParameter[T]) GetParamValue(_ context.Context, req plow.Request) (T, plow.Response) {
-	body := req.Body()
-	if body == nil {
-		var zero T
-		return zero, ErrorResponse("request body is required")
-	}
-
-	bodyBytes, err := io.ReadAll(body)
-	if err != nil {
-		var zero T
-		return zero, ErrorResponse("failed to read request body: %s", err)
-	}
-
-	var result T
-	err = json.Unmarshal(bodyBytes, &result)
-	if err != nil {
-		var zero T
-		return zero, ErrorResponse("failed to parse JSON: %s", err)
-	}
-
-	return result, nil
+type jsonParameter[T comparable] struct {
+	conditions []Condition[*T]
 }
 
-*/
+func (jp *jsonParameter[T]) GetParamValue(_ context.Context, req plow.Request) (*T, plow.Response) {
+	instance, err := plow.ReadJson[T](req)
+	if err != nil {
+		return nil, ErrorResponse(err.Error())
+	}
+
+	for _, condition := range jp.conditions {
+		if err = condition.Validate(instance); err != nil {
+			return nil, ErrorResponse(err.Error())
+		}
+	}
+
+	return instance, nil
+}
 
 // RawBodyParam creates a new ParameterProvider for extracting the raw request body as bytes.
 // This is useful when you need to process the body manually or when the content type

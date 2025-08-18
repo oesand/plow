@@ -15,6 +15,9 @@ func RegexPattern(pattern string) Condition[string] {
 
 // Regex creates a condition that validates a string matches the given regular expression.
 func Regex(regex *regexp.Regexp) Condition[string] {
+	if regex == nil {
+		panic("regex is nil")
+	}
 	return &regexCond{regex}
 }
 
