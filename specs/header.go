@@ -1,10 +1,11 @@
 package specs
 
 import (
-	"github.com/oesand/plow/internal"
-	"github.com/oesand/plow/internal/plain"
 	"iter"
 	"maps"
+
+	"github.com/oesand/plow/internal"
+	"github.com/oesand/plow/internal/plain"
 )
 
 // NewHeader creates a new Header instance with optional configuration functions.
@@ -96,7 +97,8 @@ func (header *Header) AnyCookies() bool {
 // GetCookie retrieves a cookie by its name.
 func (header *Header) GetCookie(name string) *Cookie {
 	if header.AnyCookies() {
-		return header.cookies[plain.TitleCase(name)]
+		val, _ := header.cookies[plain.TitleCase(name)]
+		return val
 	}
 	return nil
 }
