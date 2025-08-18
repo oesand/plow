@@ -30,7 +30,7 @@ func ReadForm(req Request) (specs.Query, error) {
 	}
 	b, err := io.ReadAll(body)
 	if err != nil {
-		return nil, err
+		return nil, errors.New("failed to read body")
 	}
 
 	return specs.ParseQuery(string(b)), nil
