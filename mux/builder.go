@@ -41,30 +41,40 @@ type routerBuilder struct {
 	routes []*routeBuilder
 }
 
-func (rb *routerBuilder) AddRoute(method specs.HttpMethod, path string, handler plow.Handler) RouteBuilder {
+func (rb *routerBuilder) AddRoute(method specs.HttpMethod, pattern string, handler plow.Handler, flags ...any) RouteBuilder {
+	if pattern == "" {
+		panic("plow: route pattern must have at least one character")
+	}
+	if pattern[0] != '/' {
+		panic(fmt.Sprintf("plow: route pattern must starts with '/': %s", pattern))
+	}
+
 	if !method.IsValid() {
-		panic("plow: invalid http method")
+		panic(fmt.Sprintf("plow: invalid http method: %s", pattern))
 	}
 	if handler == nil {
-		panic("plow: nil handler")
+		panic(fmt.Sprintf("plow: nil handler: %s", pattern))
 	}
-	if path == "" {
-		panic("plow: router prefix must have at least one character")
-	}
-	if path[0] != '/' {
-		panic(fmt.Sprintf("plow: path must starts with '/': %s", path))
-	}
-	if len(path) > 2 {
-		path = strings.TrimSuffix(path, "/")
+
+	if len(pattern) > 2 {
+		pattern = strings.TrimSuffix(pattern, "/")
 	}
 
 	builder := &routeBuilder{
 		method:  method,
-		path:    rb.prefix + path,
+		path:    rb.prefix + pattern,
 		handler: handler,
+		flags:   flags,
 	}
 	rb.routes = append(rb.routes, builder)
 	return builder
+}
+
+func (rb *routerBuilder) Include(other RouterBuilder) RouterBuilder {
+	for rt := range other.Routes() {
+		rb.AddRoute(rt.Method(), rt.Path(), rt.Handler()).AddFlag(rt.Flags())
+	}
+	return rb
 }
 
 func (rb *routerBuilder) Routes() iter.Seq[Route] {

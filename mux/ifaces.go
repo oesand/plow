@@ -1,13 +1,18 @@
 package mux
 
 import (
+	"context"
 	"github.com/oesand/plow"
 	"github.com/oesand/plow/specs"
 	"iter"
 )
 
+type NextFunc func(ctx context.Context) plow.Response
+type Middleware func(ctx context.Context, request plow.Request, next NextFunc) plow.Response
+
 type RouterBuilder interface {
-	AddRoute(method specs.HttpMethod, path string, handler plow.Handler) RouteBuilder
+	AddRoute(method specs.HttpMethod, pattern string, handler plow.Handler, flags ...any) RouteBuilder
+	Include(RouterBuilder) RouterBuilder
 	Routes() iter.Seq[Route]
 }
 
@@ -24,9 +29,11 @@ type Route interface {
 
 type Mux interface {
 	plow.Handler
-	NotFoundHandler(plow.Handler) Mux
-	Include(RouterBuilder) Mux
-	Add(method specs.HttpMethod, path string, handler plow.Handler, flags ...any) Mux
+	Use(middleware Middleware) Mux
+
+	Add(method specs.HttpMethod, pattern string, handler plow.Handler, flags ...any) Mux
+	Include(router RouterBuilder) Mux
+	NotFoundHandler(handler plow.Handler) Mux
 
 	Routes() iter.Seq[MuxRoute]
 }

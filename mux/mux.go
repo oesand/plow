@@ -6,10 +6,11 @@ import (
 	"github.com/oesand/plow"
 	"github.com/oesand/plow/specs"
 	"iter"
+	"slices"
 	"sort"
 )
 
-func Make(routers ...RouterBuilder) Mux {
+func New(routers ...RouterBuilder) Mux {
 	mx := &mux{}
 	for _, router := range routers {
 		mx.Include(router)
@@ -19,13 +20,22 @@ func Make(routers ...RouterBuilder) Mux {
 
 type mux struct {
 	routes          map[specs.HttpMethod][]*route
+	middlewares     []Middleware
 	notFoundHandler plow.Handler
+}
+
+func (mx *mux) Use(md Middleware) Mux {
+	if md == nil {
+		panic("plow: nil Middleware")
+	}
+	mx.middlewares = append(mx.middlewares, md)
+	return mx
 }
 
 func (mx *mux) Add(method specs.HttpMethod, path string, handler plow.Handler, flags ...any) Mux {
 	rt, err := newRoute(method, path, handler, flags)
 	if err != nil {
-		panic(fmt.Errorf("plow: cannot add route <%s>'%s': %s", method, path, err))
+		panic(err)
 	}
 
 	if mx.routes == nil {
@@ -35,12 +45,15 @@ func (mx *mux) Add(method specs.HttpMethod, path string, handler plow.Handler, f
 	mx.routes[method] = append(mx.routes[method], rt)
 	routes := mx.routes[method]
 	sort.Slice(routes, func(i, j int) bool {
-		return routes[i].Path() < routes[j].Path()
+		return routes[i].Depth > routes[j].Depth && routes[i].Path() > routes[j].Path()
 	})
 	return mx
 }
 
 func (mx *mux) Include(rb RouterBuilder) Mux {
+	if rb == nil {
+		panic("plow: nil RouterBuilder")
+	}
 	for rt := range rb.Routes() {
 		mx.Add(rt.Method(), rt.Path(), rt.Handler(), rt.Flags())
 	}
@@ -65,6 +78,25 @@ func (mx *mux) Routes() iter.Seq[MuxRoute] {
 }
 
 func (mx *mux) Handle(ctx context.Context, request plow.Request) plow.Response {
+	if len(mx.middlewares) > 0 {
+		nextMd, stop := iter.Pull(slices.Values(mx.middlewares))
+		defer stop()
+
+		var nextFunc NextFunc
+		nextFunc = func(ctx context.Context) plow.Response {
+			if md, ok := nextMd(); ok {
+				return md(ctx, request, nextFunc)
+			}
+			return mx.handle(ctx, request)
+		}
+
+		return nextFunc(ctx)
+	}
+
+	return mx.handle(ctx, request)
+}
+
+func (mx *mux) handle(ctx context.Context, request plow.Request) plow.Response {
 	if mx.routes != nil {
 		url := request.Url()
 		routes := mx.routes[request.Method()]

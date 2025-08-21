@@ -2,26 +2,41 @@ package mux
 
 import (
 	"errors"
+	"fmt"
 	"github.com/oesand/plow"
 	"github.com/oesand/plow/internal/routing"
 	"github.com/oesand/plow/specs"
 	"iter"
 	"slices"
+	"strings"
 )
 
-func newRoute(method specs.HttpMethod, path string, handler plow.Handler, flags []any) (*route, error) {
+func newRoute(method specs.HttpMethod, pattern string, handler plow.Handler, flags []any) (*route, error) {
+	if pattern == "" {
+		return nil, errors.New("plow: route pattern must have at least one character")
+	}
+	if pattern[0] != '/' {
+		return nil, errors.New(fmt.Sprintf("plow: route pattern must starts with '/': %s", pattern))
+	}
+
 	if !method.IsValid() {
-		return nil, errors.New("plow: invalid http method")
+		return nil, errors.New(fmt.Sprintf("plow: invalid http method: %s", pattern))
 	}
 	if handler == nil {
-		return nil, errors.New("plow: nil handler")
+		return nil, errors.New(fmt.Sprintf("plow: nil handler: %s", pattern))
 	}
-	pattern, err := routing.parseRouteTemplate(path)
+
+	if len(pattern) > 2 {
+		pattern = strings.TrimSuffix(pattern, "/")
+	}
+
+	routePattern, err := routing.ParseRoutePattern(pattern)
 	if err != nil {
 		return nil, err
 	}
+
 	return &route{
-		routePattern: *pattern,
+		RoutePattern: *routePattern,
 		method:       method,
 		handler:      handler,
 		flags:        flags,
@@ -29,7 +44,7 @@ func newRoute(method specs.HttpMethod, path string, handler plow.Handler, flags 
 }
 
 type route struct {
-	routing.routePattern
+	routing.RoutePattern
 	method  specs.HttpMethod
 	handler plow.Handler
 	flags   []any
@@ -40,7 +55,7 @@ func (rb *route) Method() specs.HttpMethod {
 }
 
 func (rb *route) Path() string {
-	return rb.routePattern.Template
+	return rb.RoutePattern.Original
 }
 
 func (rb *route) Handler() plow.Handler {

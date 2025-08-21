@@ -91,6 +91,8 @@ type BodyWriter interface {
 	ContentLength() int64
 }
 
+// MarshallResponse is an interface that combines [Response] and [BodyWriter] capabilities
+// with the ability to provide an instance of the underlying response type.
 type MarshallResponse interface {
 	Response
 	BodyWriter

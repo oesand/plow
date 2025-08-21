@@ -1,4 +1,4 @@
-package mux
+package routing
 
 import (
 	"fmt"
@@ -8,13 +8,14 @@ import (
 )
 
 // RoutePattern represents a compiled route pattern with parameters
-type routePattern struct {
-	Template   string
+type RoutePattern struct {
+	Original   string
 	Regex      *regexp.Regexp
 	ParamNames []string
+	Depth      int
 }
 
-// ParseRouteTemplate converts a route template into a regex pattern and parameter names
+// ParseRoutePattern converts a route template into a regex pattern and parameter names
 // Supported formats:
 //   - /users/{id}
 //   - /files/{name}/raw
@@ -25,13 +26,13 @@ type routePattern struct {
 // Everything outside of {…} is safely regex-escaped
 // Trailing slash is ignored at compile-time; both /path and /path/ are accepted at match-time
 // Wildcard parameters (*) can match any characters including slashes
-func parseRouteTemplate(template string) (*routePattern, error) {
-	if template == "" {
+func ParseRoutePattern(pattern string) (*RoutePattern, error) {
+	if pattern == "" {
 		return nil, fmt.Errorf("template cannot be empty")
 	}
 
 	// Normalize: ignore a single trailing slash in the template
-	normalized := strings.TrimSuffix(template, "/")
+	normalized := strings.TrimSuffix(pattern, "/")
 
 	spans := findPlaceholders(normalized)
 
@@ -91,11 +92,13 @@ func parseRouteTemplate(template string) (*routePattern, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile regex pattern: %w", err)
 	}
+	depth := strings.Count(pattern, "/")
 
-	return &routePattern{
-		Template:   normalized,
+	return &RoutePattern{
+		Original:   normalized,
 		Regex:      compiledRegex,
 		ParamNames: paramNames,
+		Depth:      depth,
 	}, nil
 }
 
@@ -124,7 +127,7 @@ func findPlaceholders(s string) [][2]int {
 	return res
 }
 
-func (rp *routePattern) Match(path string) (bool, iter.Seq2[string, string]) {
+func (rp *RoutePattern) Match(path string) (bool, iter.Seq2[string, string]) {
 	if rp.Regex == nil {
 		return false, nil
 	}
@@ -141,9 +144,7 @@ func (rp *routePattern) Match(path string) (bool, iter.Seq2[string, string]) {
 				value := matches[i+1]
 				// Special-case wildcard parameter to avoid capturing trailing slash
 				if paramName == "*" {
-					if strings.HasSuffix(path, "/") && strings.HasSuffix(value, "/") {
-						value = strings.TrimSuffix(value, "/")
-					}
+					value = strings.TrimSuffix(value, "/")
 				}
 				if !yield(paramName, value) {
 					return

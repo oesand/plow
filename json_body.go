@@ -8,8 +8,8 @@ import (
 	"github.com/oesand/plow/specs"
 )
 
-// ReadJson reads a JSON object from a request or response.
-// The reqOrResp parameter is the request or response to read from.
+// ReadJson reads a JSON object from a Request or ClientResponse.
+// The reqOrResp parameter is the [Request] or [ClientResponse] to read from.
 // The T parameter is the type of the JSON object to read.
 // The function returns the JSON object and an error if the request or response is not a JSON object.
 func ReadJson[T comparable](reqOrResp any) (*T, error) {
