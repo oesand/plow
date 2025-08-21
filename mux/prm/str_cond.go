@@ -16,7 +16,7 @@ func RegexPattern(pattern string) Condition[string] {
 // Regex creates a condition that validates a string matches the given regular expression.
 func Regex(regex *regexp.Regexp) Condition[string] {
 	if regex == nil {
-		panic("regex is nil")
+		panic("plow: regex is nil")
 	}
 	return &regexCond{regex}
 }
@@ -27,7 +27,7 @@ type regexCond struct {
 
 func (c *regexCond) Validate(value string) error {
 	if !c.regex.MatchString(value) {
-		return errors.New("value mismatch pattern")
+		return errors.New("value mismatch expected pattern")
 	}
 	return nil
 }

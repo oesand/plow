@@ -16,10 +16,10 @@ func EmptyRequest(method specs.HttpMethod, url *specs.Url) ClientRequest {
 		method = specs.HttpMethodGet
 	}
 	if !method.IsValid() {
-		panic("invalid http method")
+		panic("plow: invalid http method")
 	}
 	if url == nil {
-		panic("passed nil url")
+		panic("plow: passed nil url")
 	}
 	return &emptyRequest{
 		method: method,
@@ -73,10 +73,10 @@ func BufferRequest(method specs.HttpMethod, url *specs.Url, contentType string, 
 	if method == "" {
 		method = specs.HttpMethodPost
 	} else if !method.IsPostable() {
-		panic(fmt.Sprintf("http method '%s' is not postable", method))
+		panic(fmt.Sprintf("plow: http method '%s' is not postable", method))
 	}
 	if buffer == nil {
-		panic("passed nil buffer")
+		panic("plow: passed nil buffer")
 	}
 
 	req := &bufferRequest{
@@ -119,11 +119,11 @@ func StreamRequest(method specs.HttpMethod, url *specs.Url, contentType string, 
 	if method == "" {
 		method = specs.HttpMethodPost
 	} else if !method.IsPostable() {
-		panic(fmt.Sprintf("http method '%s' is not postable", method))
+		panic(fmt.Sprintf("plow: http method '%s' is not postable", method))
 	}
 
 	if stream == nil {
-		panic("passed nil stream")
+		panic("plow: passed nil stream")
 	}
 
 	req := &streamRequest{

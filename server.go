@@ -18,7 +18,7 @@ import (
 // with provided [Server.Handler] parameter
 func DefaultServer(handler Handler) *Server {
 	if handler == nil {
-		panic("handler must not be nil")
+		panic("plow: handler must not be nil")
 	}
 	return &Server{
 		Handler:             handler,
@@ -254,7 +254,7 @@ func (srv *Server) ServeTLS(lst net.Listener, certFile, keyFile string) error {
 	if srv.IsShutdown() {
 		return specs.ErrClosed
 	} else if len(certFile) == 0 || len(keyFile) == 0 {
-		return errors.New("unknown certificate source")
+		return errors.New("plow: unknown certificate source")
 	}
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {

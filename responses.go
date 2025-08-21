@@ -93,7 +93,7 @@ func BufferResponse(statusCode specs.StatusCode, contentType string, buffer []by
 
 func newBufferResponse(statusCode specs.StatusCode, contentType string, buffer []byte, configure ...func(Response)) *bufferResponse {
 	if buffer == nil {
-		panic("passed nil buffer")
+		panic("plow: passed nil buffer")
 	}
 
 	resp := &bufferResponse{
@@ -134,7 +134,7 @@ func (resp *bufferResponse) ContentLength() int64 {
 // if content type unspecified then [specs.ContentTypeRaw] will be set
 func StreamResponse(statusCode specs.StatusCode, contentType string, stream io.Reader, contentLength int64, configure ...func(Response)) Response {
 	if stream == nil {
-		panic("passed nil stream")
+		panic("plow: passed nil stream")
 	}
 
 	resp := &streamResponse{

@@ -15,10 +15,10 @@ func Router(configure ...func(router RouterBuilder)) RouterBuilder {
 
 func PrefixRouter(prefix string, configure ...func(router RouterBuilder)) RouterBuilder {
 	if len(prefix) < 2 {
-		panic("router prefix must have at least two characters")
+		panic("plow: router prefix must have at least two characters")
 	}
 	if prefix[0] != '/' {
-		panic(fmt.Sprintf("router prefix must starts with '/': %s", prefix))
+		panic(fmt.Sprintf("plow: router prefix must starts with '/': %s", prefix))
 	}
 
 	rt := newRouter(configure)
@@ -43,16 +43,16 @@ type routerBuilder struct {
 
 func (rb *routerBuilder) AddRoute(method specs.HttpMethod, path string, handler plow.Handler) RouteBuilder {
 	if !method.IsValid() {
-		panic("invalid http method")
+		panic("plow: invalid http method")
 	}
 	if handler == nil {
-		panic("nil handler")
+		panic("plow: nil handler")
 	}
 	if path == "" {
-		panic("router prefix must have at least one character")
+		panic("plow: router prefix must have at least one character")
 	}
 	if path[0] != '/' {
-		panic(fmt.Sprintf("path must starts with '/': %s", path))
+		panic(fmt.Sprintf("plow: path must starts with '/': %s", path))
 	}
 	if len(path) > 2 {
 		path = strings.TrimSuffix(path, "/")

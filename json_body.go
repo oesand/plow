@@ -23,7 +23,7 @@ func ReadJson[T comparable](reqOrResp any) (*T, error) {
 		header = r.Header()
 		body = r.Body()
 	default:
-		panic("ReadJson support only Request and ClientResponse")
+		panic("plow: ReadJson support only Request and ClientResponse")
 	}
 
 	if body == nil {

@@ -15,7 +15,7 @@ import (
 // and extracts the boundary parameter required for parsing the multipart body.
 func MultipartReader(req Request) (*multipart.Reader, error) {
 	if req == nil {
-		panic("passed nil request")
+		panic("plow: passed nil request")
 	}
 	body := req.Body()
 	if body == nil {
@@ -58,11 +58,11 @@ func MultipartRequest(method specs.HttpMethod, url *specs.Url, filler MultipartW
 	if method == "" {
 		method = specs.HttpMethodPost
 	} else if !method.IsPostable() {
-		panic(fmt.Sprintf("http method '%s' is not postable", method))
+		panic(fmt.Sprintf("plow: http method '%s' is not postable", method))
 	}
 
 	if filler == nil {
-		panic("passed nil multipart form filler")
+		panic("plow: passed nil multipart form filler")
 	}
 
 	req := &multipartRequest{

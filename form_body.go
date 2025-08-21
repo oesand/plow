@@ -12,7 +12,7 @@ import (
 // if Content-Type is specs.ContentTypeForm.
 func ReadForm(req Request) (specs.Query, error) {
 	if req == nil {
-		panic("passed nil request")
+		panic("plow: passed nil request")
 	}
 	body := req.Body()
 	if body == nil {
@@ -45,7 +45,7 @@ func FormRequest(method specs.HttpMethod, url *specs.Url, form specs.Query) Clie
 	if method == "" {
 		method = specs.HttpMethodPost
 	} else if !method.IsPostable() {
-		panic(fmt.Sprintf("http method '%s' is not postable", method))
+		panic(fmt.Sprintf("plow: http method '%s' is not postable", method))
 	}
 
 	return TextRequest(method, url, specs.ContentTypeForm, form.String())

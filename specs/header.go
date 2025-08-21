@@ -67,7 +67,7 @@ func (header *Header) Has(name string) bool {
 func (header *Header) Set(name, value string) {
 	name = plain.TitleCase(name)
 	if name == "Set-Cookie" || name == "Cookie" {
-		panic("header not support direct set cookie, use method 'SetCookie'")
+		panic("plow: header not support direct set cookie, use method 'SetCookie'")
 	} else if header.headers == nil {
 		header.headers = map[string]string{}
 	}

@@ -131,10 +131,10 @@ type Transport struct {
 // RoundTrip implements the [RoundTripper] interface.
 func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMethod, url specs.Url, header *specs.Header, writer BodyWriter) (ClientResponse, error) {
 	if ctx == nil {
-		panic("nil context pointer")
+		panic("plow: nil context pointer")
 	}
 	if header == nil {
-		panic("nil header pointer")
+		panic("plow: nil header pointer")
 	}
 	if !method.IsValid() {
 		return nil, fmt.Errorf("invalid request method '%s'", method)
@@ -434,7 +434,7 @@ func (transport *Transport) dialProxy(ctx context.Context, conn net.Conn, scheme
 		case "socks5", "socks5h":
 			_, err = proxy.DialSocks5(conn, host, port, creds)
 		default:
-			panic(fmt.Sprintf("not implemented proxy '%s' scheme dialer", scheme))
+			panic(fmt.Sprintf("plow: not implemented proxy '%s' scheme dialer", scheme))
 		}
 		return err
 	})

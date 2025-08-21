@@ -13,7 +13,7 @@ type SeqCloser struct {
 
 func (rc *SeqCloser) Add(closer io.Closer) {
 	if closer == nil {
-		panic("closer cannot be nil")
+		panic("plow: closer cannot be nil")
 	}
 	rc.closers = append(rc.closers, closer)
 }

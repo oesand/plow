@@ -78,7 +78,7 @@ func (qp *queryParameter[T]) GetParamValue(_ context.Context, req plow.Request) 
 		}
 		val = any(iv).(T)
 	default:
-		panic(fmt.Sprintf("unknown type: %s", reflect.TypeFor[T]().String()))
+		panic(fmt.Sprintf("plow: unknown type: %s", reflect.TypeFor[T]().String()))
 	}
 
 	for _, condition := range qp.conditions {

@@ -25,7 +25,7 @@ type mux struct {
 func (mx *mux) Add(method specs.HttpMethod, path string, handler plow.Handler, flags ...any) Mux {
 	rt, err := newRoute(method, path, handler, flags)
 	if err != nil {
-		panic(fmt.Errorf("cannot add route <%s>'%s': %s", method, path, err))
+		panic(fmt.Errorf("plow: cannot add route <%s>'%s': %s", method, path, err))
 	}
 
 	if mx.routes == nil {
