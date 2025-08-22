@@ -101,6 +101,11 @@ func TestParseUrl(t *testing.T) {
 			want: &Url{},
 		},
 		{
+			name: "Slash",
+			raw:  "/",
+			want: &Url{Path: "/"},
+		},
+		{
 			name: "Only host",
 			raw:  "host",
 			want: &Url{Host: "host"},

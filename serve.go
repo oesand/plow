@@ -28,10 +28,10 @@ import (
 // After [Server.Shutdown], the returned error is [specs.ErrClosed].
 func (srv *Server) Serve(listener net.Listener) error {
 	if listener == nil {
-		panic("nil listener")
+		panic("plow: nil listener")
 	}
 	if srv.Handler == nil {
-		panic("nil server handler")
+		panic("plow: nil server handler")
 	}
 	if srv.IsShutdown() {
 		return specs.ErrClosed

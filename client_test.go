@@ -3,13 +3,14 @@ package plow
 import (
 	"bytes"
 	"fmt"
-	"github.com/oesand/plow/specs"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/oesand/plow/specs"
 )
 
 func TestClient_GetRequest(t *testing.T) {
@@ -102,7 +103,7 @@ func TestClient_TooManyRedirects(t *testing.T) {
 	}
 
 	_, err := client.Make(EmptyRequest(specs.HttpMethodGet, specs.MustParseUrl(server.URL)))
-	if err == nil || err.Error() != "giglet/redirect: too many redirects" {
+	if err == nil || err.Error() != "plow/redirect: too many redirects" {
 		t.Errorf("invalid error: %s, expected 'too many redirects'", err)
 	}
 
@@ -118,7 +119,7 @@ func TestClient_RedirectMissingLocationHeader(t *testing.T) {
 	defer server.Close()
 
 	_, err := DefaultClient().Make(EmptyRequest(specs.HttpMethodGet, specs.MustParseUrl(server.URL)))
-	if err == nil || err.Error() != "giglet/redirect: empty Location header" {
+	if err == nil || err.Error() != "plow/redirect: empty Location header" {
 		t.Errorf("expected error on empty Location header, got %v", err)
 	}
 }

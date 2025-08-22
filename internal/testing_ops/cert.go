@@ -58,7 +58,7 @@ ZboOWVe3icTy64BT3OQhmg==
 func NewTlsCert() tls.Certificate {
 	cert, err := tls.X509KeyPair(LocalhostCert, LocalhostCertKey)
 	if err != nil {
-		panic(fmt.Sprintf("failed to load TLS certificate: %s", err))
+		panic(fmt.Sprintf("plow: failed to load TLS certificate: %s", err))
 	}
 	return cert
 }

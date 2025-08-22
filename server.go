@@ -3,11 +3,12 @@ package plow
 import (
 	"crypto/tls"
 	"errors"
-	"github.com/oesand/plow/specs"
 	"net"
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/oesand/plow/specs"
 )
 
 // DefaultServer factory for creating [Server]
@@ -17,7 +18,7 @@ import (
 // with provided [Server.Handler] parameter
 func DefaultServer(handler Handler) *Server {
 	if handler == nil {
-		panic("handler must not be nil")
+		panic("plow: handler must not be nil")
 	}
 	return &Server{
 		Handler:             handler,
@@ -188,7 +189,7 @@ func (srv *Server) ListenAndServe(addr string) error {
 	} else if addr == "" {
 		addr = ":http"
 	}
-	lst, err := net.Listen("tcp", addr)
+	lst, err := net.Listen("tcp4", addr)
 	if err != nil {
 		return err
 	}
@@ -211,7 +212,7 @@ func (srv *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
 	} else if addr == "" {
 		addr = ":http"
 	}
-	lst, err := net.Listen("tcp", addr)
+	lst, err := net.Listen("tcp4", addr)
 	if err != nil {
 		return err
 	}
@@ -233,7 +234,7 @@ func (srv *Server) ListenAndServeTLSRaw(addr string, cert tls.Certificate) error
 	} else if addr == "" {
 		addr = ":http"
 	}
-	lst, err := net.Listen("tcp", addr)
+	lst, err := net.Listen("tcp4", addr)
 	if err != nil {
 		return err
 	}
@@ -253,7 +254,7 @@ func (srv *Server) ServeTLS(lst net.Listener, certFile, keyFile string) error {
 	if srv.IsShutdown() {
 		return specs.ErrClosed
 	} else if len(certFile) == 0 || len(keyFile) == 0 {
-		return errors.New("unknown certificate source")
+		return errors.New("plow: unknown certificate source")
 	}
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {

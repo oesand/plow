@@ -9,6 +9,8 @@ import (
 	"github.com/oesand/plow/specs"
 )
 
+const HttpMethod = specs.HttpMethodGet
+
 type wsFrameType byte
 
 const (

@@ -41,7 +41,7 @@ func ParseUrl(url string) (*Url, error) {
 	for i := 0; i < len(url); i++ {
 		c := url[i]
 		if c < ' ' || c == 0x7f {
-			return nil, errors.New("invalid control character in url")
+			return nil, errors.New("url: invalid control character in url")
 		}
 	}
 
@@ -57,7 +57,7 @@ func ParseUrl(url string) (*Url, error) {
 
 		if i+2 <= end && url[i] == ':' && url[i+1] == '/' {
 			if 0 == i || i+2 == end || url[i+2] != '/' {
-				return nil, errors.New("invalid scheme suffix")
+				return nil, errors.New("url: invalid scheme suffix")
 			}
 
 			obj.Scheme = url[:i]
@@ -106,7 +106,7 @@ func ParseUrl(url string) (*Url, error) {
 		}
 
 		if obj.Username == "" {
-			return nil, errors.New("username must not be empty when passed")
+			return nil, errors.New("url: username must not be empty when passed")
 		}
 	} else {
 		url = strings.TrimSuffix(url, "@")
@@ -117,7 +117,7 @@ func ParseUrl(url string) (*Url, error) {
 	if strings.HasPrefix(url, "[") {
 		i := strings.Index(url, "]")
 		if i < 0 {
-			return nil, errors.New("missing ']' in host")
+			return nil, errors.New("url: missing ']' in host")
 		}
 		if i > portIndex {
 			portIndex = -1
@@ -125,10 +125,10 @@ func ParseUrl(url string) (*Url, error) {
 	}
 
 	if portIndex == 0 {
-		return nil, errors.New("empty host when port passed")
+		return nil, errors.New("url: empty host when port passed")
 	} else if portIndex > 0 {
 		if portIndex == len(url)-1 {
-			return nil, errors.New("empty port")
+			return nil, errors.New("url: empty port")
 		}
 
 		host, port := url[:portIndex], url[portIndex+1:]
@@ -136,7 +136,7 @@ func ParseUrl(url string) (*Url, error) {
 
 		portNum, err := strconv.ParseUint(port, 10, 16)
 		if err != nil {
-			return nil, errors.New("cannot parse port")
+			return nil, errors.New("url: cannot parse port")
 		}
 		obj.Port = uint16(portNum)
 	} else {
@@ -145,10 +145,10 @@ func ParseUrl(url string) (*Url, error) {
 
 	if obj.Host == "" {
 		if obj.Scheme != "" {
-			return nil, errors.New("host required when scheme passed")
+			return nil, errors.New("url: host required when scheme passed")
 		}
 		if obj.Username != "" {
-			return nil, errors.New("host required when username passed")
+			return nil, errors.New("url: host required when username passed")
 		}
 	}
 
@@ -156,7 +156,7 @@ func ParseUrl(url string) (*Url, error) {
 	if len(obj.Host) > 0 {
 		host := obj.Host
 		if strings.HasSuffix(host, "]") && !strings.HasPrefix(obj.Host, "[") {
-			return nil, errors.New("missing '[' in host")
+			return nil, errors.New("url: missing '[' in host")
 		}
 
 		if strings.HasPrefix(host, "[") {

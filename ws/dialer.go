@@ -57,13 +57,13 @@ func (dialer *Dialer) DialContext(ctx context.Context, client *plow.Client, url 
 
 func (dialer *Dialer) dial(ctx context.Context, client *plow.Client, url *specs.Url, configure ...func(plow.ClientRequest)) (Conn, error) {
 	if ctx == nil {
-		panic("nil Context pointer")
+		panic("plow: nil Context pointer")
 	}
 	if client == nil {
-		panic("nil Client pointer")
+		panic("plow: nil Client pointer")
 	}
 	if url.Host == "" {
-		panic("empty url host")
+		panic("plow: empty url host")
 	}
 
 	if url.Scheme == "" {

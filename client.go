@@ -69,7 +69,7 @@ type Client struct {
 // A non-2xx status code doesn't cause an error.
 func (cln *Client) Make(request ClientRequest) (ClientResponse, error) {
 	if request == nil {
-		panic("nil request pointer")
+		panic("plow: nil request pointer")
 	}
 	return cln.MakeContext(context.Background(), request)
 }
@@ -77,13 +77,13 @@ func (cln *Client) Make(request ClientRequest) (ClientResponse, error) {
 // MakeContext version [Client.Make] with [context.Context] cancellation support
 func (cln *Client) MakeContext(ctx context.Context, request ClientRequest) (ClientResponse, error) {
 	if cln == nil {
-		panic("nil client pointer")
+		panic("plow: nil client pointer")
 	}
 	if ctx == nil {
-		panic("nil context pointer")
+		panic("plow: nil context pointer")
 	}
 	if request == nil {
-		panic("nil request pointer")
+		panic("plow: nil request pointer")
 	}
 
 	url := request.Url()
@@ -106,7 +106,7 @@ func (cln *Client) MakeContext(ctx context.Context, request ClientRequest) (Clie
 
 	header := request.Header()
 	if header == nil {
-		panic("nil request.header pointer")
+		panic("plow: nil request.header pointer")
 	}
 
 	header = header.Clone()

@@ -7,6 +7,7 @@ import (
 	"github.com/oesand/plow/internal/stream"
 	"github.com/oesand/plow/specs"
 	"io"
+	"strings"
 )
 
 func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, totalLimit int64) (*specs.Header, error) {
@@ -75,11 +76,11 @@ func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 }
 
 func applyKVHeader(header *specs.Header, key, value string) {
-	if key == "Cookie" {
+	if strings.EqualFold(key, "Cookie") {
 		for cookieKey, cookieVal := range ParseCookieHeader(value) {
 			header.SetCookieValue(cookieKey, cookieVal)
 		}
-	} else if key == "Set-Cookie" {
+	} else if strings.EqualFold(key, "Set-Cookie") {
 		cookie := ParseSetCookieHeader(value)
 		if cookie != nil {
 			header.SetCookie(*cookie)
