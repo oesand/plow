@@ -6,6 +6,7 @@ import (
 	"iter"
 	"slices"
 	"sort"
+	"sync"
 
 	"github.com/oesand/plow"
 	"github.com/oesand/plow/specs"
@@ -26,12 +27,17 @@ type mux struct {
 	routes          map[specs.HttpMethod][]*route
 	middlewares     []Middleware
 	notFoundHandler plow.Handler
+
+	mu sync.RWMutex
 }
 
 func (mx *mux) Use(md Middleware) Mux {
 	if md == nil {
 		panic("plow: nil Middleware")
 	}
+	mx.mu.Lock()
+	defer mx.mu.Unlock()
+
 	mx.middlewares = append(mx.middlewares, md)
 	return mx
 }
@@ -41,6 +47,8 @@ func (mx *mux) Route(method specs.HttpMethod, path string, handler plow.Handler,
 	if err != nil {
 		panic(err)
 	}
+	mx.mu.Lock()
+	defer mx.mu.Unlock()
 
 	if mx.routes == nil {
 		mx.routes = make(map[specs.HttpMethod][]*route)
@@ -68,12 +76,18 @@ func (mx *mux) Include(rb RouterBuilder) Mux {
 }
 
 func (mx *mux) NotFoundHandler(handler plow.Handler) Mux {
+	mx.mu.Lock()
+	defer mx.mu.Unlock()
+
 	mx.notFoundHandler = handler
 	return mx
 }
 
 func (mx *mux) Routes() iter.Seq[MuxRoute] {
 	return func(yield func(MuxRoute) bool) {
+		mx.mu.RLock()
+		defer mx.mu.RUnlock()
+
 		for _, routes := range mx.routes {
 			for _, rt := range routes {
 				if !yield(rt) {
@@ -85,6 +99,9 @@ func (mx *mux) Routes() iter.Seq[MuxRoute] {
 }
 
 func (mx *mux) Handle(ctx context.Context, request plow.Request) plow.Response {
+	mx.mu.RLock()
+	defer mx.mu.RUnlock()
+
 	if len(mx.middlewares) > 0 {
 		nextMd, stop := iter.Pull(slices.Values(mx.middlewares))
 		defer stop()

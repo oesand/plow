@@ -195,7 +195,7 @@ func TestJsonParam(t *testing.T) {
 		name          string
 		body          string
 		contentType   string
-		expectedData  TestUser
+		expectedData  *TestUser
 		expectedResp  bool
 		expectedError string
 	}{
@@ -203,7 +203,7 @@ func TestJsonParam(t *testing.T) {
 			name:        "valid JSON",
 			body:        `{"name":"John Doe","email":"john@example.com","age":30}`,
 			contentType: "application/json",
-			expectedData: TestUser{
+			expectedData: &TestUser{
 				Name:  "John Doe",
 				Email: "john@example.com",
 				Age:   30,
@@ -214,7 +214,7 @@ func TestJsonParam(t *testing.T) {
 			name:        "JSON with extra fields",
 			body:        `{"name":"Jane","email":"jane@example.com","age":25,"extra":"ignored"}`,
 			contentType: "application/json",
-			expectedData: TestUser{
+			expectedData: &TestUser{
 				Name:  "Jane",
 				Email: "jane@example.com",
 				Age:   25,
@@ -225,7 +225,7 @@ func TestJsonParam(t *testing.T) {
 			name:        "JSON with missing fields",
 			body:        `{"name":"Bob"}`,
 			contentType: "application/json",
-			expectedData: TestUser{
+			expectedData: &TestUser{
 				Name:  "Bob",
 				Email: "",
 				Age:   0,
@@ -236,7 +236,7 @@ func TestJsonParam(t *testing.T) {
 			name:          "invalid JSON",
 			body:          `{"name":"Invalid JSON`,
 			contentType:   "application/json",
-			expectedData:  TestUser{},
+			expectedData:  nil,
 			expectedResp:  true,
 			expectedError: "failed to parse JSON",
 		},
@@ -244,7 +244,7 @@ func TestJsonParam(t *testing.T) {
 			name:          "missing body",
 			body:          "",
 			contentType:   "",
-			expectedData:  TestUser{},
+			expectedData:  nil,
 			expectedResp:  true,
 			expectedError: "request body is required",
 		},

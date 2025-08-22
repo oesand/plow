@@ -15,12 +15,12 @@ func TestRegexPatternCondition(t *testing.T) {
 		expected error
 	}{
 		{"matches pattern", `^[a-z]+$`, "hello", nil},
-		{"doesn't match pattern", `^[a-z]+$`, "Hello123", errors.New("value mismatch pattern")},
+		{"doesn't match pattern", `^[a-z]+$`, "Hello123", errors.New("value mismatch expected pattern")},
 		{"empty string with pattern", `^[a-z]*$`, "", nil},
 		{"email pattern valid", `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`, "test@example.com", nil},
-		{"email pattern invalid", `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`, "invalid-email", errors.New("value mismatch pattern")},
+		{"email pattern invalid", `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`, "invalid-email", errors.New("value mismatch expected pattern")},
 		{"number pattern valid", `^\d+$`, "12345", nil},
-		{"number pattern invalid", `^\d+$`, "123abc", errors.New("value mismatch pattern")},
+		{"number pattern invalid", `^\d+$`, "123abc", errors.New("value mismatch expected pattern")},
 	}
 
 	for _, tt := range tests {
@@ -51,10 +51,10 @@ func TestRegexCondition(t *testing.T) {
 		expected error
 	}{
 		{"matches regex", regexp.MustCompile(`^[A-Z]+$`), "HELLO", nil},
-		{"doesn't match regex", regexp.MustCompile(`^[A-Z]+$`), "Hello", errors.New("value mismatch pattern")},
+		{"doesn't match regex", regexp.MustCompile(`^[A-Z]+$`), "Hello", errors.New("value mismatch expected pattern")},
 		{"empty string with regex", regexp.MustCompile(`^.*$`), "", nil},
 		{"complex regex valid", regexp.MustCompile(`^[a-z]{3,10}$`), "hello", nil},
-		{"complex regex invalid", regexp.MustCompile(`^[a-z]{3,10}$`), "hi", errors.New("value mismatch pattern")},
+		{"complex regex invalid", regexp.MustCompile(`^[a-z]{3,10}$`), "hi", errors.New("value mismatch expected pattern")},
 	}
 
 	for _, tt := range tests {
