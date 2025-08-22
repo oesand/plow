@@ -1,9 +1,9 @@
 # Plow
 
-[![tag](https://img.shields.io/github/tag/oesand/giglet.svg)](https://github.com/oesand/giglet/releases)
+[![tag](https://img.shields.io/github/tag/oesand/plow.svg)](https://github.com/oesand/plow/releases)
 ![Test Status](https://github.com/oesand/plow/actions/workflows/test.yml/badge.svg)
-[![GoDoc](https://godoc.org/github.com/oesand/giglet?status.svg)](https://pkg.go.dev/github.com/oesand/giglet)
-[![License](https://img.shields.io/github/license/oesand/giglet)](./LICENSE)
+[![GoDoc](https://godoc.org/github.com/oesand/plow?status.svg)](https://pkg.go.dev/github.com/oesand/plow)
+[![License](https://img.shields.io/github/license/oesand/plow)](./LICENSE)
 
 🐦‍⬛ **`plow` - All in One HTTP package for Go. Tuned for high performance, easy to use and speed up writing.**
 

@@ -10,7 +10,7 @@ import (
 
 const (
 	// DefaultServerName default value for Server.ServerName parameter
-	DefaultServerName = "giglet"
+	DefaultServerName = "plow"
 
 	// DefaultMaxRedirectCount default value for Client.MaxRedirectCount parameter
 	DefaultMaxRedirectCount int = 10
