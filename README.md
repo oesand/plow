@@ -5,7 +5,7 @@
 [![GoDoc](https://godoc.org/github.com/oesand/giglet?status.svg)](https://pkg.go.dev/github.com/oesand/giglet)
 [![License](https://img.shields.io/github/license/oesand/giglet)](./LICENSE)
 
-🐦‍⬛ **`plow` - All in One HTTP package for Go. Tuned for high performance and easy to use.**
+🐦‍⬛ **`plow` - All in One HTTP package for Go. Tuned for high performance, easy to use and speed up writing.**
 
 ## 📦 Installation
 
@@ -28,21 +28,26 @@ req := plow.TextRequest(specs.HttpMethodPost, url, specs.ContentTypePlain, "Hell
 
 client := plow.Client{}
 // Recommended (with optimal parameters)
-client := plow.DefaultClient()
-
-// Use proxy
-transport := &plow.Transport{}
-transport.Proxy = func(url *specs.Url) (*specs.Url, error) {
-    return specs.ParseUrl("socks5://127.0.0.1:1080")
-}
-// Or fixed proxy url
-transport.Proxy = plow.FixedProxyUrl(specs.MustParseUrl("https://127.0.0.1"))
-client.Transport = transport
+// client := plow.DefaultClient()
 
 resp, err := client.Make(req)
 if err != nil {
     panic(err)
 }
+```
+
+```go
+client := plow.Client{}
+
+// You can use proxy
+transport := &plow.Transport{}
+transport.Proxy = func(url *specs.Url) (*specs.Url, error) {
+    return specs.ParseUrl("socks5://127.0.0.1:1080")
+}
+
+// Fixed proxy url
+transport.Proxy = plow.FixedProxyUrl(specs.MustParseUrl("https://127.0.0.1"))
+client.Transport = transport
 ```
 
 ### Server
@@ -64,7 +69,7 @@ server := plow.Server{
 }
 
 // Recommended (with optimal parameters)
-server := plow.DefaultServer(handler)
+// server := plow.DefaultServer(handler)
 
 err := server.ListenAndServe(":http")
 if err != nil {
