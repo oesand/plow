@@ -47,7 +47,7 @@ jobs:
         run: make test
 
       - name: 🧹 Remove xxx_test.go files
-        run: rm -rf */*_test.go
+        run: rm -rf $(find . -type f -name "*_test.go")
 
       - name: 🧹 Cleanup dependencies
         run: go mod tidy
@@ -63,6 +63,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          git add .
+          git commit --allow-empty -m 'bump ${{ github.ref_name }}'
           gh release create "${{ github.ref_name }}" \
             --title "${{ github.ref_name }}" \
             --generate-notes
