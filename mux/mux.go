@@ -3,13 +3,17 @@ package mux
 import (
 	"context"
 	"fmt"
-	"github.com/oesand/plow"
-	"github.com/oesand/plow/specs"
 	"iter"
 	"slices"
 	"sort"
+
+	"github.com/oesand/plow"
+	"github.com/oesand/plow/specs"
 )
 
+// New creates a new Mux instance with optional initial routers.
+// If routers are provided, they will be included in the new mux.
+// This is the primary constructor for creating new multiplexer instances.
 func New(routers ...RouterBuilder) Mux {
 	mx := &mux{}
 	for _, router := range routers {
@@ -32,7 +36,7 @@ func (mx *mux) Use(md Middleware) Mux {
 	return mx
 }
 
-func (mx *mux) Add(method specs.HttpMethod, path string, handler plow.Handler, flags ...any) Mux {
+func (mx *mux) Route(method specs.HttpMethod, path string, handler plow.Handler, flags ...any) Mux {
 	rt, err := newRoute(method, path, handler, flags)
 	if err != nil {
 		panic(err)
@@ -45,7 +49,10 @@ func (mx *mux) Add(method specs.HttpMethod, path string, handler plow.Handler, f
 	mx.routes[method] = append(mx.routes[method], rt)
 	routes := mx.routes[method]
 	sort.Slice(routes, func(i, j int) bool {
-		return routes[i].Depth > routes[j].Depth && routes[i].Path() > routes[j].Path()
+		if routes[i].Depth == routes[j].Depth {
+			return len(routes[i].ParamNames) < len(routes[j].ParamNames)
+		}
+		return routes[i].Depth > routes[j].Depth
 	})
 	return mx
 }
@@ -55,7 +62,7 @@ func (mx *mux) Include(rb RouterBuilder) Mux {
 		panic("plow: nil RouterBuilder")
 	}
 	for rt := range rb.Routes() {
-		mx.Add(rt.Method(), rt.Path(), rt.Handler(), rt.Flags())
+		mx.Route(rt.Method(), rt.Pattern(), rt.Handler(), slices.Collect(rt.Flags())...)
 	}
 	return mx
 }

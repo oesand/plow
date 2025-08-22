@@ -2,17 +2,32 @@ package mux
 
 import (
 	"fmt"
-	"github.com/oesand/plow"
-	"github.com/oesand/plow/specs"
 	"iter"
 	"slices"
 	"strings"
+
+	"github.com/oesand/plow"
+	"github.com/oesand/plow/specs"
 )
 
+// Router creates a new RouterBuilder with optional configuration functions.
+// The configuration functions are applied to the router during creation,
+// allowing for declarative router setup.
 func Router(configure ...func(router RouterBuilder)) RouterBuilder {
-	return newRouter(configure)
+	rt := &routerBuilder{}
+
+	for _, conf := range configure {
+		conf(rt)
+	}
+
+	return rt
 }
 
+// PrefixRouter creates a new RouterBuilder with a URL prefix that will be prepended
+// to all routes added to this router. This is useful for grouping related routes
+// under a common path prefix.
+//
+// Panics if the prefix is less than 2 characters or doesn't start with '/'.
 func PrefixRouter(prefix string, configure ...func(router RouterBuilder)) RouterBuilder {
 	if len(prefix) < 2 {
 		panic("plow: router prefix must have at least two characters")
@@ -21,13 +36,9 @@ func PrefixRouter(prefix string, configure ...func(router RouterBuilder)) Router
 		panic(fmt.Sprintf("plow: router prefix must starts with '/': %s", prefix))
 	}
 
-	rt := newRouter(configure)
-	rt.prefix = strings.TrimSuffix(prefix, "/")
-	return rt
-}
-
-func newRouter(configure []func(router RouterBuilder)) *routerBuilder {
-	rt := &routerBuilder{}
+	rt := &routerBuilder{
+		prefix: strings.TrimSuffix(prefix, "/"),
+	}
 
 	for _, conf := range configure {
 		conf(rt)
@@ -41,7 +52,7 @@ type routerBuilder struct {
 	routes []*routeBuilder
 }
 
-func (rb *routerBuilder) AddRoute(method specs.HttpMethod, pattern string, handler plow.Handler, flags ...any) RouteBuilder {
+func (rb *routerBuilder) Route(method specs.HttpMethod, pattern string, handler plow.Handler, flags ...any) RouteBuilder {
 	if pattern == "" {
 		panic("plow: route pattern must have at least one character")
 	}
@@ -60,9 +71,17 @@ func (rb *routerBuilder) AddRoute(method specs.HttpMethod, pattern string, handl
 		pattern = strings.TrimSuffix(pattern, "/")
 	}
 
+	if rb.prefix != "" {
+		if pattern == "/" {
+			pattern = rb.prefix
+		} else {
+			pattern = rb.prefix + pattern
+		}
+	}
+
 	builder := &routeBuilder{
 		method:  method,
-		path:    rb.prefix + pattern,
+		pattern: pattern,
 		handler: handler,
 		flags:   flags,
 	}
@@ -72,7 +91,7 @@ func (rb *routerBuilder) AddRoute(method specs.HttpMethod, pattern string, handl
 
 func (rb *routerBuilder) Include(other RouterBuilder) RouterBuilder {
 	for rt := range other.Routes() {
-		rb.AddRoute(rt.Method(), rt.Path(), rt.Handler()).AddFlag(rt.Flags())
+		rb.Route(rt.Method(), rt.Pattern(), rt.Handler(), slices.Collect(rt.Flags())...)
 	}
 	return rb
 }
@@ -89,7 +108,7 @@ func (rb *routerBuilder) Routes() iter.Seq[Route] {
 
 type routeBuilder struct {
 	method  specs.HttpMethod
-	path    string
+	pattern string
 	handler plow.Handler
 	flags   []any
 }
@@ -98,8 +117,8 @@ func (rb *routeBuilder) Method() specs.HttpMethod {
 	return rb.method
 }
 
-func (rb *routeBuilder) Path() string {
-	return rb.path
+func (rb *routeBuilder) Pattern() string {
+	return rb.pattern
 }
 
 func (rb *routeBuilder) Handler() plow.Handler {
@@ -111,6 +130,6 @@ func (rb *routeBuilder) Flags() iter.Seq[any] {
 }
 
 func (rb *routeBuilder) AddFlag(flags ...any) RouteBuilder {
-	copy(rb.flags, flags)
+	rb.flags = append(rb.flags, flags...)
 	return rb
 }

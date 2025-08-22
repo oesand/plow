@@ -95,7 +95,7 @@ func ParseRoutePattern(pattern string) (*RoutePattern, error) {
 	depth := strings.Count(pattern, "/")
 
 	return &RoutePattern{
-		Original:   normalized,
+		Original:   pattern,
 		Regex:      compiledRegex,
 		ParamNames: paramNames,
 		Depth:      depth,

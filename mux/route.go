@@ -16,14 +16,14 @@ func newRoute(method specs.HttpMethod, pattern string, handler plow.Handler, fla
 		return nil, errors.New("plow: route pattern must have at least one character")
 	}
 	if pattern[0] != '/' {
-		return nil, errors.New(fmt.Sprintf("plow: route pattern must starts with '/': %s", pattern))
+		return nil, fmt.Errorf("plow: route pattern must starts with '/': %s", pattern)
 	}
 
 	if !method.IsValid() {
-		return nil, errors.New(fmt.Sprintf("plow: invalid http method: %s", pattern))
+		return nil, fmt.Errorf("plow: invalid http method: %s", pattern)
 	}
 	if handler == nil {
-		return nil, errors.New(fmt.Sprintf("plow: nil handler: %s", pattern))
+		return nil, fmt.Errorf("plow: nil handler: %s", pattern)
 	}
 
 	if len(pattern) > 2 {
@@ -54,7 +54,7 @@ func (rb *route) Method() specs.HttpMethod {
 	return rb.method
 }
 
-func (rb *route) Path() string {
+func (rb *route) Pattern() string {
 	return rb.RoutePattern.Original
 }
 
