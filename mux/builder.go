@@ -90,6 +90,9 @@ func (rb *routerBuilder) Route(method specs.HttpMethod, pattern string, handler 
 }
 
 func (rb *routerBuilder) Include(other RouterBuilder) RouterBuilder {
+	if other == rb {
+		panic("plow: router builder cannot include self")
+	}
 	for rt := range other.Routes() {
 		rb.Route(rt.Method(), rt.Pattern(), rt.Handler(), slices.Collect(rt.Flags())...)
 	}

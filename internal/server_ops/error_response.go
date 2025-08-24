@@ -24,13 +24,16 @@ func (resp *ErrorResponse) WriteTo(writer io.Writer) (int64, error) {
 	if code == 0 {
 		code = specs.StatusCodeInternalServerError
 	}
-	hl, err := WriteResponseHead(writer, false, code, closeHeaders)
+	size, err := WriteResponseHead(writer, false, code, closeHeaders)
 	if err != nil {
 		return 0, err
 	}
-	bl, err := writer.Write([]byte(resp.Text))
-	if err != nil {
-		return 0, err
+	if resp.Text != "" {
+		bodySize, err := writer.Write([]byte(resp.Text))
+		if err != nil {
+			return 0, err
+		}
+		size += int64(bodySize)
 	}
-	return hl + int64(bl), nil
+	return size, nil
 }

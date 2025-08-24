@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http/httputil"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -85,9 +86,9 @@ func (srv *Server) Serve(listener net.Listener) error {
 		go func(conn net.Conn) {
 			defer connTrack.Done()
 			defer func() {
-				if r := recover(); r != nil {
+				if err := recover(); err != nil {
 					if errorHandler != nil {
-						errorHandler.HandleError(ctx, conn, r)
+						errorHandler.HandleError(ctx, conn, err)
 					} else {
 						conn.SetDeadline(time.Now().Add(time.Second))
 						responseInternalServerError.WriteTo(conn)
@@ -104,7 +105,7 @@ func (srv *Server) Serve(listener net.Listener) error {
 					var respErr *server_ops.ErrorResponse
 					if errors.As(err, &respErr) {
 						respErr.WriteTo(conn)
-					} else {
+					} else if !catch.IsCommonNetReadError(err) {
 						responseInternalServerError.WriteTo(conn)
 					}
 				}
@@ -149,7 +150,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 			// If the handshake failed due to the client not speaking
 			// TLS, assume they're speaking plaintext HTTP and write a
 			// 400 response on the TLS conn underlying net.Conn.
-			if re, ok := err.(tls.RecordHeaderError); ok && re.Conn != nil {
+			if re, ok := err.(tls.RecordHeaderError); ok && re.Conn != nil && server_ops.TlsRecordHeaderLikeHTTP(re.RecordHeader) {
 				return responseErrDowngradeHTTPS
 			}
 			return err
@@ -169,14 +170,22 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 	defer cancel()
 
 	if srv.ReadTimeout > 0 {
-		conn.SetReadDeadline(time.Now().Add(srv.ReadTimeout))
+		defer conn.SetReadDeadline(time.Time{})
 	}
 
 	if srv.WriteTimeout > 0 {
-		conn.SetWriteDeadline(time.Now().Add(srv.WriteTimeout))
+		defer conn.SetWriteDeadline(time.Time{})
 	}
 
 	for {
+		if srv.ReadTimeout > 0 {
+			conn.SetReadDeadline(time.Now().Add(srv.ReadTimeout))
+		}
+
+		if srv.WriteTimeout > 0 {
+			conn.SetWriteDeadline(time.Now().Add(srv.WriteTimeout))
+		}
+
 		req, extraBuffered, err := srv.readHeader(ctx, conn)
 
 		if err != nil {
@@ -188,6 +197,19 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 
 		if err = ctx.Err(); err != nil {
 			return err
+		}
+
+		protoMajor, protoMinor := req.ProtoVersion()
+		isHttp11 := protoMajor == 1 && protoMinor == 1
+
+		// Expect 100 Continue support
+		var expectContinue bool
+		if expect := req.Header().Get("Expect"); expect != "" {
+			if isHttp11 && strings.EqualFold(expect, "100-continue") {
+				expectContinue = true
+			} else {
+				return responseExpectationFailedError
+			}
 		}
 
 		if req.Method().IsPostable() {
@@ -209,7 +231,10 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 							return responseErrBodyTooLarge
 						}
 					} else {
-						return errors.New("invalid Content-Length header: " + cl)
+						return &server_ops.ErrorResponse{
+							Code: specs.StatusCodeLengthRequired,
+							Text: "http: invalid Content-Length header: " + cl,
+						}
 					}
 				}
 
@@ -221,6 +246,13 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 					if contentLength > 0 {
 						reader = io.LimitReader(reader, contentLength)
 					}
+				}
+			}
+
+			if expectContinue {
+				_, err = conn.Write(responseContinueBuf)
+				if err != nil {
+					return err
 				}
 			}
 
@@ -295,9 +327,6 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 			}
 		}
 
-		protoMajor, protoMinor := req.ProtoVersion()
-		isHttp11 := protoMajor == 1 && protoMinor == 1
-
 		_, err = server_ops.WriteResponseHead(conn, isHttp11, code, header)
 
 		if err != nil {
@@ -328,14 +357,6 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 		} else if req.Method() != specs.HttpMethodHead && writable == nil && code.IsReplyable() {
 			break
 		}
-	}
-
-	if srv.ReadTimeout > 0 {
-		conn.SetReadDeadline(time.Time{})
-	}
-
-	if srv.WriteTimeout > 0 {
-		conn.SetWriteDeadline(time.Time{})
 	}
 
 	return nil
