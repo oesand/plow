@@ -47,7 +47,8 @@ jobs:
         run: make test
 
       - name: 🧹 Cleanup xxx_test.go files
-        run: rm -rf $(find . -type f -name "*_test.go")
+        run: find . -name "*_test.go" -delete
+
       - name: 🧹 Cleanup dependencies
         run: go mod tidy
 
