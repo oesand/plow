@@ -7,12 +7,12 @@ import (
 	"errors"
 	"github.com/oesand/plow/internal/catch"
 	"github.com/oesand/plow/internal/encoding"
+	"github.com/oesand/plow/internal/parsing"
 	"github.com/oesand/plow/internal/server_ops"
 	"github.com/oesand/plow/internal/stream"
 	"github.com/oesand/plow/specs"
 	"io"
 	"net"
-	"net/http/httputil"
 	"strconv"
 	"strings"
 	"sync"
@@ -144,16 +144,24 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 	}
 
 	if tlsConn, ok := conn.(*tls.Conn); ok {
+		if srv.TLSHandshakeTimeout > 0 {
+			conn.SetDeadline(time.Now().Add(srv.TLSHandshakeTimeout))
+		}
 		err = catch.CallWithTimeoutContextErr(ctx, srv.TLSHandshakeTimeout, tlsConn.HandshakeContext)
 
 		if err != nil {
 			// If the handshake failed due to the client not speaking
 			// TLS, assume they're speaking plaintext HTTP and write a
 			// 400 response on the TLS conn underlying net.Conn.
-			if re, ok := err.(tls.RecordHeaderError); ok && re.Conn != nil && server_ops.TlsRecordHeaderLikeHTTP(re.RecordHeader) {
+			var re tls.RecordHeaderError
+			if errors.As(err, &re) && re.Conn != nil && server_ops.TlsRecordHeaderLikeHTTP(re.RecordHeader) {
 				return responseErrDowngradeHTTPS
 			}
 			return err
+		}
+
+		if srv.TLSHandshakeTimeout > 0 {
+			conn.SetDeadline(time.Time{})
 		}
 
 		proto := tlsConn.ConnectionState().NegotiatedProtocol
@@ -177,7 +185,30 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 		defer conn.SetWriteDeadline(time.Time{})
 	}
 
-	for {
+	bufioReader := stream.DefaultBufioReaderPool.Get(conn)
+	defer stream.DefaultBufioReaderPool.Put(bufioReader)
+
+	for i := 0; true; i++ {
+		if i > 0 {
+			// TODO :: cover idle connection
+			idleTimeout := srv.IdleTimeout
+			if idleTimeout <= 0 {
+				idleTimeout = srv.ReadTimeout
+			}
+
+			if idleTimeout > 0 {
+				conn.SetReadDeadline(time.Now().Add(idleTimeout))
+
+				// Wait for the connection to become readable again
+				// before trying to read the next request.
+				if _, err := bufioReader.Peek(4); err != nil {
+					return nil
+				}
+
+				conn.SetReadDeadline(time.Time{})
+			}
+		}
+
 		if srv.ReadTimeout > 0 {
 			conn.SetReadDeadline(time.Now().Add(srv.ReadTimeout))
 		}
@@ -186,8 +217,11 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 			conn.SetWriteDeadline(time.Now().Add(srv.WriteTimeout))
 		}
 
-		req, extraBuffered, err := srv.readHeader(ctx, conn)
+		req, err := server_ops.ReadRequest(ctx, conn.RemoteAddr(), bufioReader, srv.ReadLineMaxLength, srv.HeadMaxLength)
 
+		if err == nil {
+			err = ctx.Err()
+		}
 		if err != nil {
 			if !catch.IsCommonNetReadError(err) {
 				return responseErrNotProcessable
@@ -195,68 +229,82 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 			return err
 		}
 
-		if err = ctx.Err(); err != nil {
-			return err
-		}
-
 		protoMajor, protoMinor := req.ProtoVersion()
 		isHttp11 := protoMajor == 1 && protoMinor == 1
+		var wantKeepAlive bool
+		if !srv.DisableKeepAlive {
+			if isHttp11 {
+				wantKeepAlive = !strings.EqualFold(req.Header().Get("Connection"), "close")
+			} else {
+				wantKeepAlive = strings.EqualFold(req.Header().Get("Connection"), "keep-alive")
+			}
+		}
+
+		// TODO :: cover expect continue
 
 		// Expect 100 Continue support
 		var expectContinue bool
-		if expect := req.Header().Get("Expect"); expect != "" {
-			if isHttp11 && strings.EqualFold(expect, "100-continue") {
+		if expectHeader := req.Header().Get("Expect"); expectHeader != "" {
+			if isHttp11 && strings.EqualFold(expectHeader, "100-continue") {
 				expectContinue = true
 			} else {
 				return responseExpectationFailedError
 			}
 		}
 
+		var selectedEncoding string
+		if acceptEncoding, has := req.Header().TryGet("Accept-Encoding"); has {
+			variants := strings.Split(acceptEncoding, ", ")
+			for _, variant := range variants {
+				if encoding.IsKnownEncoding(variant) {
+					selectedEncoding = variant
+					break
+				}
+			}
+		}
+
+		var isChunked bool
 		if req.Method().IsPostable() {
-			reader := io.MultiReader(bytes.NewReader(extraBuffered), conn)
+			var contentLength int64
+			isChunked, contentLength, err = parsing.ParseContentLength(req.Header())
+			if err != nil {
+				if errors.Is(err, parsing.ErrParsing) {
+					return responseInvalidContentLength
+				}
+				if errors.Is(err, specs.ErrUnknownTransferEncoding) {
+					return responseUnsupportedTransferEncoding
+				}
 
-			if req.Chunked {
+				return err
+			}
+
+			if isChunked || contentLength > 0 {
 				if srv.MaxBodySize > 0 {
-					reader = io.LimitReader(reader, srv.MaxBodySize)
-				}
-				reader = httputil.NewChunkedReader(reader)
-			} else {
-				var contentLength int64
-				if cl := req.Header().Get("Content-Length"); cl != "" {
-					contentLength, err = strconv.ParseInt(cl, 10, 64)
-					if err == nil {
-						if contentLength <= 0 {
-							reader = nil
-						} else if srv.MaxBodySize > 0 && contentLength >= srv.MaxBodySize {
-							return responseErrBodyTooLarge
-						}
-					} else {
-						return &server_ops.ErrorResponse{
-							Code: specs.StatusCodeLengthRequired,
-							Text: "http: invalid Content-Length header: " + cl,
-						}
-					}
-				}
-
-				if reader != nil {
-					if contentLength <= 0 && srv.MaxBodySize > 0 {
+					if isChunked {
 						contentLength = srv.MaxBodySize
-					}
-
-					if contentLength > 0 {
-						reader = io.LimitReader(reader, contentLength)
+					} else if contentLength > srv.MaxBodySize {
+						return responseErrBodyTooLarge
 					}
 				}
-			}
 
-			if expectContinue {
-				_, err = conn.Write(responseContinueBuf)
-				if err != nil {
-					return err
+				var reader io.Reader = bufioReader
+				if isChunked {
+					reader = encoding.NewChunkedReader(bufioReader)
 				}
-			}
 
-			req.BodyReader = reader
+				if contentLength > 0 {
+					reader = io.LimitReader(reader, contentLength)
+				}
+
+				if expectContinue {
+					_, err = conn.Write(responseContinueBuf)
+					if err != nil {
+						return err
+					}
+				}
+
+				req.BodyReader = reader
+			}
 		}
 
 		if err = ctx.Err(); err != nil {
@@ -284,8 +332,22 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 
 		header.Set("Date", time.Now().Format(specs.TimeFormat))
 
-		if req.SelectedEncoding != "" {
-			header.Set("Content-Encoding", req.SelectedEncoding)
+		if selectedEncoding != "" {
+			header.Set("Content-Encoding", selectedEncoding)
+		}
+
+		var mustClose bool
+		if connHeader := header.Get("Connection"); connHeader != "" {
+			if strings.EqualFold(connHeader, "close") || !wantKeepAlive {
+				mustClose = true
+			}
+		} else {
+			mustClose = !wantKeepAlive
+			if mustClose {
+				header.Set("Connection", "close")
+			} else if !isHttp11 {
+				header.Set("Connection", "keep-alive")
+			}
 		}
 
 		if !code.IsValid() {
@@ -299,10 +361,10 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 		var encodedContent []byte
 		mustResponseBody := req.Method().IsReplyable() && code.IsReplyable() && writable != nil
 		if mustResponseBody {
-			if req.Chunked {
+			if isChunked {
 				header.Set("Transfer-Encoding", "chunked")
 			} else if header.Get("Transfer-Encoding") == "chunked" {
-				req.Chunked = true
+				isChunked = true
 			} else {
 				maxEncodingSize := DefaultMaxEncodingSize
 				if srv.MaxEncodingSize > 0 {
@@ -310,16 +372,16 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 				}
 				contentLength := writable.ContentLength()
 
-				if req.SelectedEncoding != "" && contentLength <= maxEncodingSize {
+				if selectedEncoding != "" && contentLength <= maxEncodingSize {
 					var cachedBody bytes.Buffer
-					err = srv.writeBody(writable, &cachedBody, false, req.SelectedEncoding)
+					err = srv.writeBody(writable, &cachedBody, false, selectedEncoding)
 					if err != nil {
 						return err
 					}
 					encodedContent = cachedBody.Bytes()
 					header.Set("Content-Length", strconv.Itoa(len(encodedContent)))
 				} else {
-					req.SelectedEncoding = ""
+					selectedEncoding = ""
 					if contentLength > 0 {
 						header.Set("Content-Length", strconv.FormatInt(contentLength, 10))
 					}
@@ -342,7 +404,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 				_, err = conn.Write(encodedContent)
 			}
 		} else if mustResponseBody {
-			err = srv.writeBody(writable, conn, req.Chunked, req.SelectedEncoding)
+			err = srv.writeBody(writable, conn, isChunked, selectedEncoding)
 		}
 
 		if err != nil {
@@ -354,26 +416,14 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 		} else if hijacker := req.Hijacker(); hijacker != nil {
 			hijacker(ctx, conn)
 			break
+		} else if mustClose {
+			break
 		} else if req.Method() != specs.HttpMethodHead && writable == nil && code.IsReplyable() {
 			break
 		}
 	}
 
 	return nil
-}
-
-func (srv *Server) readHeader(ctx context.Context, conn net.Conn) (*server_ops.HttpRequest, []byte, error) {
-	headerReader := stream.DefaultBufioReaderPool.Get(conn)
-	defer stream.DefaultBufioReaderPool.Put(headerReader)
-
-	req, err := server_ops.ReadRequest(ctx, conn.RemoteAddr(), headerReader, srv.ReadLineMaxLength, srv.HeadMaxLength)
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
-	return req, extraBuffered, nil
 }
 
 func (srv *Server) writeBody(writable BodyWriter, writer io.Writer, chunked bool, contentEncoding string) error {

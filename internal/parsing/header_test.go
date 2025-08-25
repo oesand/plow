@@ -27,7 +27,7 @@ func TestParseHeaders(t *testing.T) {
 		{
 			name: "Empty input",
 			text: "",
-			want: specs.NewHeader(func(h *specs.Header) {}),
+			want: specs.NewHeader(),
 		},
 		{
 			name:    "Only whitespace lines",

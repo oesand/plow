@@ -5,24 +5,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/oesand/plow/internal/catch"
-	"github.com/oesand/plow/internal/encoding"
 	"github.com/oesand/plow/internal/parsing"
 	"github.com/oesand/plow/internal/stream"
 	"github.com/oesand/plow/specs"
 	"golang.org/x/net/http/httpguts"
 	"net"
-	"strings"
 )
 
 func ReadRequest(
 	ctx context.Context, remoteAddr net.Addr,
 	reader *bufio.Reader, lineLimit int64, totalLimit int64,
 ) (*HttpRequest, error) {
-	select {
-	case <-ctx.Done():
-		return nil, specs.ErrCancelled
-	default:
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	line, err := stream.ReadBufferLine(reader, lineLimit)
@@ -66,7 +61,7 @@ func ReadRequest(
 		}
 	}
 
-	if err = catch.CatchContextCancel(ctx); err != nil {
+	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
 
@@ -79,17 +74,6 @@ func ReadRequest(
 			}
 		}
 		return nil, err
-	}
-
-	var chunkedEncoding bool
-	if protoMajor > 1 || (protoMajor == 1 && protoMinor >= 0) {
-		chunkedEncoding, err = encoding.IsChunkedTransfer(header)
-		if err != nil {
-			return nil, &ErrorResponse{
-				Code: specs.StatusCodeNotImplemented,
-				Text: "http: unsupported transfer encoding",
-			}
-		}
 	}
 
 	// RFC 7230, section 5.3: Must treat
@@ -108,17 +92,6 @@ func ReadRequest(
 		header.Set("Cache-Control", "no-cache")
 	}
 
-	var selectedEncoding string
-	if acceptEncoding, has := header.TryGet("Accept-Encoding"); has {
-		variants := strings.Split(acceptEncoding, ", ")
-		for _, variant := range variants {
-			if encoding.IsKnownEncoding(variant) {
-				selectedEncoding = variant
-				break
-			}
-		}
-	}
-
 	req := &HttpRequest{
 		method:     method,
 		protoMajor: protoMajor,
@@ -126,9 +99,6 @@ func ReadRequest(
 		remoteAddr: remoteAddr,
 		url:        url,
 		header:     header,
-
-		Chunked:          chunkedEncoding,
-		SelectedEncoding: selectedEncoding,
 	}
 
 	return req, nil

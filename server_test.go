@@ -1,6 +1,7 @@
 package plow
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
@@ -15,7 +16,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"strconv"
 	"sync/atomic"
 	"testing"
@@ -153,10 +153,6 @@ func TestServer_ChunkedTransferEncodingTwoWays(t *testing.T) {
 			t.Errorf("not found expected headers, %+v", request.Header())
 		}
 
-		if !req.Chunked {
-			t.Error("chunked flag not set int request")
-		}
-
 		body := req.Body()
 		if body == nil {
 			t.Fatal("request body is nil")
@@ -220,7 +216,7 @@ func TestServer_ChunkedTransferEncodingTwoWays(t *testing.T) {
 
 	defer body.Close()
 
-	reader := httputil.NewChunkedReader(body)
+	reader := encoding.NewChunkedReader(bufio.NewReader(body))
 	data, err := io.ReadAll(reader)
 	if err != nil {
 		t.Fatal("read all:", err)
@@ -276,7 +272,7 @@ func TestServer_ChunkedTransferEncodingResponse(t *testing.T) {
 
 	defer body.Close()
 
-	reader := httputil.NewChunkedReader(body)
+	reader := encoding.NewChunkedReader(bufio.NewReader(body))
 	data, err := io.ReadAll(reader)
 	if err != nil {
 		t.Fatal("read all:", err)
@@ -527,7 +523,7 @@ func TestServer_GzipEncodingAndChunkedTransferEncoding(t *testing.T) {
 
 	defer body.Close()
 
-	reader := httputil.NewChunkedReader(body)
+	reader := encoding.NewChunkedReader(bufio.NewReader(body))
 	reader, err = gzip.NewReader(reader)
 	if err != nil {
 		t.Fatalf("encoder err: %s", err)
@@ -589,7 +585,7 @@ func TestServer_DeflateEncodingAndChunkedTransferEncoding(t *testing.T) {
 
 	defer body.Close()
 
-	reader := httputil.NewChunkedReader(body)
+	reader := encoding.NewChunkedReader(bufio.NewReader(body))
 	reader, err = zlib.NewReader(reader)
 	if err != nil {
 		t.Fatalf("encoder err: %s", err)
@@ -651,7 +647,7 @@ func TestServer_BrotliEncodingAndChunkedTransferEncoding(t *testing.T) {
 
 	defer body.Close()
 
-	reader := httputil.NewChunkedReader(body)
+	reader := encoding.NewChunkedReader(bufio.NewReader(body))
 	reader = brotli.NewReader(reader)
 
 	data, err := io.ReadAll(reader)

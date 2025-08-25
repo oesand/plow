@@ -39,10 +39,18 @@ var (
 	}
 	responseErrBodyTooLarge = &server_ops.ErrorResponse{
 		Code: specs.StatusCodeRequestEntityTooLarge,
-		Text: "http: too large body",
+		Text: "http: too large body.",
 	}
 	responseExpectationFailedError = &server_ops.ErrorResponse{
 		Code: specs.StatusCodeExpectationFailed,
+	}
+	responseInvalidContentLength = &server_ops.ErrorResponse{
+		Code: specs.StatusCodeLengthRequired,
+		Text: "http: invalid Content-Length header",
+	}
+	responseUnsupportedTransferEncoding = &server_ops.ErrorResponse{
+		Code: specs.StatusCodeNotImplemented,
+		Text: "http: unsupported transfer encoding",
 	}
 	responseInternalServerError = &server_ops.ErrorResponse{
 		Code: specs.StatusCodeInternalServerError,
