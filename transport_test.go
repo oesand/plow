@@ -7,16 +7,17 @@ import (
 	"compress/zlib"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"github.com/andybalholm/brotli"
 	"github.com/armon/go-socks5"
+	"github.com/oesand/plow/internal/encoding"
 	"github.com/oesand/plow/internal/server_ops"
 	"github.com/oesand/plow/specs"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/http/httputil"
 	"strconv"
 	"sync/atomic"
 	"testing"
@@ -90,7 +91,7 @@ func TestTransport_ChunkedTransferEncoding(t *testing.T) {
 		header.Set("Transfer-Encoding", "chunked")
 
 		var cacheBuf bytes.Buffer
-		cw := httputil.NewChunkedWriter(&cacheBuf)
+		cw := encoding.NewChunkedWriter(&cacheBuf)
 		cw.Write(testContent)
 		cw.Close()
 		return specs.StatusCodeOK, header, cacheBuf.Bytes()
@@ -191,7 +192,7 @@ func TestTransport_PostChunkedTransferEncodingRequest(t *testing.T) {
 			t.Errorf("not found expected headers: %+v", req.Header())
 		}
 
-		cr := httputil.NewChunkedReader(reader)
+		cr := encoding.NewChunkedReader(reader)
 		b, err := io.ReadAll(cr)
 		if err != nil {
 			t.Fatalf("Read all: %s", err)
@@ -200,7 +201,9 @@ func TestTransport_PostChunkedTransferEncodingRequest(t *testing.T) {
 			t.Errorf("expected %s, got %s", string(requestBody), string(b))
 		}
 
-		server_ops.WriteResponseHead(conn, true, specs.StatusCodeOK, specs.NewHeader())
+		server_ops.WriteResponseHead(conn, true, specs.StatusCodeOK, specs.NewHeader(func(header *specs.Header) {
+			header.Set("Content-Length", "8")
+		}))
 		conn.Write([]byte("received"))
 		conn.Close()
 	}()
@@ -322,7 +325,7 @@ func TestTransport_ChunkedAndGzipEncoding(t *testing.T) {
 	testContent := []byte("Content\nEncoding 1234567890")
 	closeServer, url := newTestServer(func(req Request) (specs.StatusCode, *specs.Header, []byte) {
 		var cacheBuf bytes.Buffer
-		cw := httputil.NewChunkedWriter(&cacheBuf)
+		cw := encoding.NewChunkedWriter(&cacheBuf)
 		ew := gzip.NewWriter(cw)
 		ew.Write(testContent)
 		ew.Close()
@@ -354,7 +357,7 @@ func TestTransport_ChunkedAndDeflateEncoding(t *testing.T) {
 	testContent := []byte("Content\nEncoding 1234567890")
 	closeServer, url := newTestServer(func(req Request) (specs.StatusCode, *specs.Header, []byte) {
 		var cacheBuf bytes.Buffer
-		cw := httputil.NewChunkedWriter(&cacheBuf)
+		cw := encoding.NewChunkedWriter(&cacheBuf)
 		ew := zlib.NewWriter(cw)
 		ew.Write(testContent)
 		ew.Close()
@@ -385,7 +388,7 @@ func TestTransport_ChunkedAndBrotliEncoding(t *testing.T) {
 	testContent := []byte("Content\nEncoding 1234567890")
 	closeServer, url := newTestServer(func(req Request) (specs.StatusCode, *specs.Header, []byte) {
 		var cacheBuf bytes.Buffer
-		cw := httputil.NewChunkedWriter(&cacheBuf)
+		cw := encoding.NewChunkedWriter(&cacheBuf)
 		ew := brotli.NewWriter(cw)
 		ew.Write(testContent)
 		ew.Close()
@@ -873,5 +876,215 @@ func TestTransport_HttpsProxyAuth(t *testing.T) {
 
 	if !connectedProxy.Load() {
 		t.Fatal("not was connected to proxy server")
+	}
+}
+
+// Test Expectation
+
+func TestTransport_Expect100ContinueRaw(t *testing.T) {
+	requestBody := []byte(`{"key": "value"}`)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	url, err := serveTcpTest(ctx, func(conn net.Conn) {
+		bufioReader := bufio.NewReader(conn)
+		req, err := server_ops.ReadRequest(ctx, conn.RemoteAddr(), bufioReader, 1024, 8*1024)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if req.Header().Get("Expect") != "100-continue" ||
+			req.Header().Get("Content-Length") != "16" {
+			t.Errorf("unexpected headers, %+v", req.Header())
+		}
+
+		conn.SetReadDeadline(time.Now().Add(10 * time.Millisecond))
+		_, err = bufioReader.Peek(2)
+		if err != nil {
+			var neterr net.Error
+			if !(errors.As(err, &neterr) && neterr.Timeout()) {
+				t.Error(err)
+			}
+		}
+		conn.SetReadDeadline(time.Time{})
+
+		_, err = conn.Write(responseContinueBuf)
+		if err != nil {
+			t.Error(err)
+		}
+
+		buf := make([]byte, len(requestBody))
+		_, err = io.ReadFull(bufioReader, buf)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if !bytes.Equal(buf, requestBody) {
+			t.Errorf("expect '%s', got '%s'", requestBody, buf)
+		}
+
+		header := specs.NewHeader()
+		header.Set("Content-Length", "4")
+		_, err = server_ops.WriteResponseHead(conn, true, specs.StatusCodeOK, header)
+		if err != nil {
+			t.Error(err)
+		}
+
+		_, err = conn.Write([]byte("okay"))
+		if err != nil {
+			t.Error(err)
+		}
+
+	})
+
+	req := BufferRequest(specs.HttpMethodPost, url, specs.ContentTypePlain, requestBody)
+	req.Header().Set("Expect", "100-continue")
+
+	resp, err := DefaultTransport().RoundTrip(ctx, req.Method(), req.Url(), req.Header(), req.(BodyWriter))
+
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	checkResponseBody(t, resp, []byte("okay"))
+}
+
+func TestTransport_Expect100ContinueHttp(t *testing.T) {
+	requestBody := []byte(`{"key": "value"}`)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Expect") != "100-continue" ||
+			r.Header.Get("Content-Length") != strconv.Itoa(len(requestBody)) ||
+			r.Header.Get("Content-Type") != specs.ContentTypePlain {
+			t.Errorf("not found expected headers: %+v", r.Header)
+		}
+
+		b, _ := io.ReadAll(r.Body)
+		if !bytes.Equal(b, requestBody) {
+			t.Errorf("expected %s, got %s", string(requestBody), string(b))
+		}
+		w.Write([]byte("okay"))
+	}))
+	defer server.Close()
+
+	url := specs.MustParseUrl(server.URL)
+	req := BufferRequest(specs.HttpMethodPost, url, specs.ContentTypePlain, requestBody)
+	req.Header().Set("Expect", "100-continue")
+
+	resp, err := DefaultTransport().RoundTrip(context.Background(), req.Method(), req.Url(), req.Header(), req.(BodyWriter))
+
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	checkResponseBody(t, resp, []byte("okay"))
+}
+
+// Test Hijack
+
+func TestTransport_Hijack(t *testing.T) {
+	requestBody := []byte(`{"key": "value"}`)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	url, err := serveTcpTest(ctx, func(conn net.Conn) {
+		// Reading
+		bufioReader := bufio.NewReader(conn)
+		req, err := server_ops.ReadRequest(ctx, conn.RemoteAddr(), bufioReader, 1024, 8*1024)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if req.Header().Get("Content-Length") != "16" {
+			t.Errorf("unexpected headers, %+v", req.Header())
+		}
+
+		buf := make([]byte, len(requestBody))
+		_, err = io.ReadFull(bufioReader, buf)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if !bytes.Equal(buf, requestBody) {
+			t.Errorf("expect '%s', got '%s'", requestBody, buf)
+		}
+
+		// Writing
+		header := specs.NewHeader()
+		header.Set("Content-Length", "4")
+		_, err = server_ops.WriteResponseHead(conn, true, specs.StatusCodeOK, header)
+		if err != nil {
+			t.Error(err)
+		}
+
+		_, err = conn.Write([]byte("okay"))
+		if err != nil {
+			t.Error(err)
+		}
+
+		// After hijack
+
+		buf = make([]byte, 4)
+		_, err = io.ReadFull(bufioReader, buf)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if !bytes.Equal(buf, []byte("ping")) {
+			t.Errorf("unexpected pong response '%s'", buf)
+		}
+
+		_, err = conn.Write([]byte("pong"))
+		if err != nil {
+			t.Error(err)
+		}
+	})
+
+	req := BufferRequest(specs.HttpMethodPost, url, specs.ContentTypePlain, requestBody)
+	hijacker, ctx := WithTransportHijacker(ctx)
+
+	resp, err := DefaultTransport().RoundTrip(ctx, req.Method(), req.Url(), req.Header(), req.(BodyWriter))
+
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	if resp.StatusCode() != specs.StatusCodeOK {
+		t.Error("invalid status code:", resp.StatusCode())
+	}
+
+	body := resp.Body()
+	if body == nil {
+		t.Error("response body is nil")
+	}
+	defer body.Close()
+
+	data, err := io.ReadAll(body)
+	if err != nil {
+		t.Error("read all:", err)
+	}
+
+	if !bytes.Equal(data, []byte("okay")) {
+		t.Error("invalid response:", string(data))
+	}
+
+	conn := hijacker.Conn
+	if conn == nil {
+		t.Error("conn not hijacked")
+	}
+
+	_, err = conn.Write([]byte("ping"))
+	if err != nil {
+		t.Error(err)
+	}
+
+	buf := make([]byte, 4)
+	_, err = io.ReadFull(conn, buf)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if !bytes.Equal(buf, []byte("pong")) {
+		t.Errorf("unexpected pong response '%s'", buf)
 	}
 }

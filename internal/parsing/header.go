@@ -3,7 +3,6 @@ package parsing
 import (
 	"bufio"
 	"context"
-	"github.com/oesand/plow/internal/catch"
 	"github.com/oesand/plow/internal/stream"
 	"github.com/oesand/plow/specs"
 	"io"
@@ -31,7 +30,7 @@ func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 
 	var key, value []byte
 	for {
-		if err := catch.CatchContextCancel(ctx); err != nil {
+		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 

@@ -3,7 +3,6 @@ package client_ops
 import (
 	"bufio"
 	"context"
-	"github.com/oesand/plow/internal/catch"
 	"github.com/oesand/plow/internal/parsing"
 	"github.com/oesand/plow/internal/stream"
 	"github.com/oesand/plow/specs"
@@ -23,7 +22,7 @@ func ReadResponse(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 		return nil, specs.NewOpError("parsing", "unsupported http version %d.%d", protoMajor, protoMinor)
 	}
 
-	if err = catch.CatchContextCancel(ctx); err != nil {
+	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
 

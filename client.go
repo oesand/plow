@@ -154,18 +154,17 @@ func (cln *Client) MakeContext(ctx context.Context, request ClientRequest) (Clie
 
 	var redirectCount int
 	for {
-		if err := catch.CatchContextCancel(ctx); err != nil {
-			return nil, err
+		if err := ctx.Err(); err != nil {
+			return nil, catch.CatchCommonErr(err)
 		}
 
 		resp, err := transport.RoundTrip(ctx, method, url, header, writer)
 
+		if err == nil {
+			err = ctx.Err()
+		}
 		if err != nil {
 			return nil, catch.CatchCommonErr(err)
-		}
-
-		if err = catch.CatchContextCancel(ctx); err != nil {
-			return nil, err
 		}
 
 		if cln.Jar != nil {

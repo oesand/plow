@@ -221,8 +221,8 @@ func (conn *wsConn) beforeOp() error {
 		}
 	}
 
-	if err := catch.CatchContextCancel(conn.ctx); err != nil {
-		return err
+	if err := conn.ctx.Err(); err != nil {
+		return catch.CatchCommonErr(err)
 	}
 
 	return nil

@@ -25,6 +25,7 @@ func DefaultServer(handler Handler) *Server {
 		ReadLineMaxLength:   1024,
 		HeadMaxLength:       8 * 1024,
 		MaxBodySize:         10 << 20, // 10 mb
+		IdleTimeout:         20 * time.Second,
 		ReadTimeout:         10 * time.Second,
 		WriteTimeout:        10 * time.Second,
 		TLSHandshakeTimeout: 5 * time.Second,
@@ -63,6 +64,13 @@ type Server struct {
 	// ServerName for sending in response headers.
 	ServerName string
 
+	// TLSHandshakeTimeout specifies the maximum amount of time to
+	// wait for a TLS handshake. Zero means no timeout.
+	TLSHandshakeTimeout time.Duration
+
+	// TLSConfig optionally provides a TLS configuration
+	TLSConfig *tls.Config
+
 	// ReadTimeout is the maximum duration for server the entire
 	// request, including the body. A zero or negative value means
 	// there will be no timeout.
@@ -73,12 +81,13 @@ type Server struct {
 	// there will be no timeout.
 	WriteTimeout time.Duration
 
-	// TLSHandshakeTimeout specifies the maximum amount of time to
-	// wait for a TLS handshake. Zero means no timeout.
-	TLSHandshakeTimeout time.Duration
-
-	// TLSConfig optionally provides a TLS configuration
-	TLSConfig *tls.Config
+	// IdleTimeout is the maximum amount of time to wait for the
+	// next request when keep-alive are enabled.
+	//
+	// If zero, the value of ReadTimeout is used.
+	// If negative, or if zero and ReadTimeout
+	// is zero or negative, there is no timeout.
+	IdleTimeout time.Duration
 
 	// ReadLineMaxLength maximum size in bytes
 	// to read lines in the request
@@ -109,6 +118,14 @@ type Server struct {
 	//
 	// if not specified, the encoding will be skipped
 	MaxEncodingSize int64
+
+	// DisableKeepAlive controls whether HTTP keep-alive are enabled.
+	//
+	// Only very resource-constrained environments or servers in the process of
+	// shutting down should disable them.
+	//
+	// By default, keep-alive are always enabled.
+	DisableKeepAlive bool
 
 	tlsNextProtos map[string]NextProtoHandler
 

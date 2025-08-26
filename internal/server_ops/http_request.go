@@ -21,9 +21,7 @@ type HttpRequest struct {
 	url                    *specs.Url
 	header                 *specs.Header
 
-	BodyReader       io.Reader
-	Chunked          bool
-	SelectedEncoding string
+	BodyReader io.Reader
 }
 
 func (req *HttpRequest) ProtoVersion() (major, minor uint16) {

@@ -1,6 +1,7 @@
 package encoding
 
 import (
+	"bufio"
 	"compress/gzip"
 	"compress/zlib"
 	"fmt"
@@ -9,8 +10,17 @@ import (
 	"io"
 )
 
-func NewReader(contentEncoding string, reader io.Reader) (io.ReadCloser, error) {
+func NewReader(isChunked bool, contentEncoding string, bufio *bufio.Reader) (io.ReadCloser, error) {
+	var reader io.Reader
+	if isChunked {
+		reader = NewChunkedReader(bufio)
+	} else {
+		reader = bufio
+	}
+
 	switch contentEncoding {
+	case "":
+		return io.NopCloser(reader), nil
 	case specs.ContentEncodingGzip:
 		return gzip.NewReader(reader)
 	case specs.ContentEncodingDeflate:

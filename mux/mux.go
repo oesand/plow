@@ -54,14 +54,15 @@ func (mx *mux) Route(method specs.HttpMethod, path string, handler plow.Handler,
 		mx.routes = make(map[specs.HttpMethod][]*route)
 	}
 
-	mx.routes[method] = append(mx.routes[method], rt)
 	routes := mx.routes[method]
+	routes = append(routes, rt)
 	sort.Slice(routes, func(i, j int) bool {
 		if routes[i].Depth == routes[j].Depth {
 			return len(routes[i].ParamNames) < len(routes[j].ParamNames)
 		}
 		return routes[i].Depth > routes[j].Depth
 	})
+	mx.routes[method] = routes
 	return mx
 }
 

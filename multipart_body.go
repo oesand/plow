@@ -39,22 +39,16 @@ func MultipartReader(req Request) (*multipart.Reader, error) {
 	return multipart.NewReader(body, boundary), nil
 }
 
-// MultipartWriterFiller is a function type that fills a multipart.Writer with parts.
-// It is used to populate the body of a multipart HTTP request.
-//
-// [multipart.Writer.Close] must not be called by the filler function, as it will be handled by the request itself.
-type MultipartWriterFiller func(*multipart.Writer) error
-
 // MultipartRequest creates a new ClientRequest for sending a multipart HTTP request.
 // It sets the appropriate Content-Type header with a generated boundary and uses
 // the provided filler function to populate the multipart body.
 //
-// [MultipartWriterFiller] is a function that takes a *multipart.Writer and writes the necessary parts to it.
+// filler is a function that takes a *multipart.Writer and writes the necessary parts to it.
 // [multipart.Writer.Close] must not be called by the filler function, as it will be handled by the request itself.
 // Chunked transfer encoding is enabled by default for this request.
 //
 // If the method is not specified, it defaults to POST.
-func MultipartRequest(method specs.HttpMethod, url *specs.Url, filler MultipartWriterFiller) ClientRequest {
+func MultipartRequest(method specs.HttpMethod, url *specs.Url, filler func(*multipart.Writer) error) ClientRequest {
 	if method == "" {
 		method = specs.HttpMethodPost
 	} else if !method.IsPostable() {
@@ -90,7 +84,7 @@ func multipartBoundary() string {
 
 type multipartRequest struct {
 	ClientRequest
-	filler   MultipartWriterFiller
+	filler   func(*multipart.Writer) error
 	boundary string
 }
 

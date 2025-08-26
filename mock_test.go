@@ -4,10 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"github.com/oesand/plow/internal"
 	"github.com/oesand/plow/internal/client_ops"
 	"github.com/oesand/plow/internal/server_ops"
-	"github.com/oesand/plow/internal/stream"
 	"github.com/oesand/plow/specs"
 	"io"
 	"net"
@@ -60,47 +60,55 @@ func checkHttpResponseBody(t *testing.T, resp *http.Response, expected []byte) {
 	}
 }
 
-func newTestServer(handler func(req Request) (specs.StatusCode, *specs.Header, []byte)) (func(), *specs.Url) {
+func serveTcpTest(ctx context.Context, handler func(net.Conn)) (*specs.Url, error) {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	url := specs.MustParseUrl("http://" + listener.Addr().String())
 
 	go func() {
-		var conn net.Conn
 		for {
-			conn, err = listener.Accept()
+			conn, err := listener.Accept()
 
-			select {
-			case <-ctx.Done():
-			default:
+			if ctx.Err() != nil {
+				if err == nil {
+					conn.Close()
+				}
+				listener.Close()
+				return
 			}
 
 			if err != nil {
-				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				var netErr net.Error
+				if errors.As(err, &netErr) && netErr.Timeout() {
 					time.Sleep(5 * time.Millisecond)
 					continue
 				}
 			}
+
+			handler(conn)
+
+			listener.Close()
 			break
-
-			select {
-			case <-ctx.Done():
-			default:
-			}
 		}
+	}()
 
-		headerReader := stream.DefaultBufioReaderPool.Get(conn)
-		defer stream.DefaultBufioReaderPool.Put(headerReader)
+	return url, err
+}
 
-		req, err := server_ops.ReadRequest(ctx, listener.Addr(), headerReader, 1024, 8*1024)
+func newTestServer(handler func(req Request) (specs.StatusCode, *specs.Header, []byte)) (func(), *specs.Url) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	url, err := serveTcpTest(ctx, func(conn net.Conn) {
+		bufioReader := bufio.NewReader(conn)
+
+		req, err := server_ops.ReadRequest(ctx, conn.RemoteAddr(), bufioReader, 1024, 8*1024)
 		if err != nil {
 			panic(err)
 		}
-		extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
-		req.BodyReader = io.MultiReader(bytes.NewReader(extraBuffered), conn)
+		req.BodyReader = bufioReader
 
 		code, header, body := handler(req)
 		if header == nil {
@@ -115,16 +123,12 @@ func newTestServer(handler func(req Request) (specs.StatusCode, *specs.Header, [
 		}
 
 		conn.Close()
-	}()
-
-	closeFunc := func() {
-		cancel()
-		listener.Close()
+	})
+	if err != nil {
+		panic(err)
 	}
 
-	url := specs.MustParseUrl("http://" + listener.Addr().String())
-
-	return closeFunc, url
+	return cancel, url
 }
 
 func newTestClientSend(method specs.HttpMethod, url *specs.Url, header *specs.Header, body []byte) (ClientResponse, net.Conn, error) {

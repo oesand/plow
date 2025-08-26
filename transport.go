@@ -1,21 +1,22 @@
 package plow
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"github.com/oesand/plow/internal"
 	"github.com/oesand/plow/internal/catch"
 	"github.com/oesand/plow/internal/client_ops"
 	"github.com/oesand/plow/internal/encoding"
+	"github.com/oesand/plow/internal/parsing"
 	"github.com/oesand/plow/internal/proxy"
 	"github.com/oesand/plow/internal/stream"
 	"github.com/oesand/plow/specs"
 	"io"
 	"net"
-	"net/http/httputil"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -89,6 +90,16 @@ type Transport struct {
 	// wait for a TLS handshake. Zero means no timeout.
 	TLSHandshakeTimeout time.Duration
 
+	// ReadTimeout is the maximum duration for server the entire
+	// response, including the body. A zero or negative value means
+	// there will be no timeout.
+	ReadTimeout time.Duration
+
+	// WriteTimeout is the maximum duration before timing out
+	// writes of the request. A zero or negative value means
+	// there will be no timeout.
+	WriteTimeout time.Duration
+
 	// ReadLineMaxLength maximum size in bytes
 	// to read lines in the response
 	// such as headers and headlines
@@ -116,16 +127,6 @@ type Transport struct {
 	//
 	// By default, response body size is unlimited.
 	MaxBodySize int64
-
-	// ReadTimeout is the maximum duration for server the entire
-	// response, including the body. A zero or negative value means
-	// there will be no timeout.
-	ReadTimeout time.Duration
-
-	// WriteTimeout is the maximum duration before timing out
-	// writes of the request. A zero or negative value means
-	// there will be no timeout.
-	WriteTimeout time.Duration
 }
 
 // RoundTrip implements the [RoundTripper] interface.
@@ -212,12 +213,19 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 		header.Set("Connection", "close")
 	}
 
-	isChunked, err := encoding.IsChunkedTransfer(header)
-	if err != nil {
-		return nil, err
+	var isChunked bool
+	if te, has := header.TryGet("Transfer-Encoding"); has {
+		switch te {
+		case "chunked":
+			isChunked = true
+		default:
+			return nil, specs.ErrUnknownTransferEncoding
+		}
 	}
 
-	if !isChunked && writer != nil {
+	mustWriteBody := method.IsPostable() && writer != nil
+
+	if !isChunked && mustWriteBody {
 		contentLength := writer.ContentLength()
 		if contentLength > 0 {
 			header.Set("Content-Length", strconv.FormatInt(contentLength, 10))
@@ -227,7 +235,7 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 	var conn net.Conn
 	if proxyUrl != nil {
 		conn, err = transport.dial(ctx, proxyUrl.Host, proxyUrl.Port)
-		if err = catch.CatchCommonErr(err); err != nil {
+		if err != nil {
 			return nil, catch.TryWrapOpErr("dial", err)
 		}
 
@@ -237,22 +245,26 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 		}
 
 		err = transport.dialProxy(ctx, conn, proxyUrl.Scheme, host, url.Port, proxyCreds)
-		if err = catch.CatchCommonErr(err); err != nil {
+		if err != nil {
 			conn.Close()
 			return nil, catch.TryWrapOpErr("proxy", err)
 		}
 	} else {
 		conn, err = transport.dial(ctx, host, url.Port)
-		if err = catch.CatchCommonErr(err); err != nil {
+		if err != nil {
 			return nil, catch.TryWrapOpErr("dial", err)
 		}
 	}
 
+	closeConn, includeClose, cancelCloseConn := internal.CancellableDefer(func() {
+		conn.Close()
+	})
+	defer closeConn()
+
 	if url.Scheme == "https" {
 		var tlsConn net.Conn
 		tlsConn, err = transport.dialTls(ctx, conn, host)
-		if err = catch.CatchCommonErr(err); err != nil {
-			conn.Close()
+		if err != nil {
 			return nil, catch.TryWrapOpErr("tls", err)
 		}
 		conn = tlsConn
@@ -260,19 +272,26 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 
 	if transport.WriteTimeout > 0 {
 		conn.SetWriteDeadline(time.Now().Add(transport.WriteTimeout))
+		defer conn.SetWriteDeadline(time.Time{})
 	}
 
 	_, err = client_ops.WriteRequestHead(conn, method, url.Path, url.Query, header)
 
+	if err == nil {
+		err = ctx.Err()
+	}
 	if err = catch.CatchCommonErr(err); err != nil {
-		conn.Close()
 		return nil, catch.TryWrapOpErr("write", err)
-	} else if err = catch.CatchContextCancel(ctx); err != nil {
-		conn.Close()
-		return nil, err
 	}
 
-	if method.IsPostable() && writer != nil {
+	// Expect 100 Continue support
+	expectContinue := mustWriteBody && strings.EqualFold(header.Get("Expect"), "100-continue")
+	if expectContinue {
+		goto reading
+	}
+
+writeBody:
+	if mustWriteBody {
 		if isChunked {
 			chunkedWriter := encoding.NewChunkedWriter(conn)
 			err = writer.WriteBody(chunkedWriter)
@@ -281,127 +300,99 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 			err = writer.WriteBody(conn)
 		}
 
+		if err == nil {
+			err = ctx.Err()
+		}
 		if err != nil {
-			conn.Close()
 			return nil, catch.CatchCommonErr(err)
 		}
-
-		if err = catch.CatchContextCancel(ctx); err != nil {
-			conn.Close()
-			return nil, err
-		}
 	}
 
-	if transport.WriteTimeout > 0 {
-		conn.SetWriteDeadline(time.Time{})
-	}
-
+reading:
 	if transport.ReadTimeout > 0 {
 		conn.SetReadDeadline(time.Now().Add(transport.ReadTimeout))
 	}
 
-	headerReader := stream.DefaultBufioReaderPool.Get(conn)
-	defer stream.DefaultBufioReaderPool.Put(headerReader)
+	bufioReader := stream.DefaultBufioReaderPool.Get(conn)
+	includeClose(func() {
+		stream.DefaultBufioReaderPool.Put(bufioReader)
+	})
 
-	resp, err := client_ops.ReadResponse(ctx, headerReader, transport.ReadLineMaxLength, transport.HeadMaxLength)
+	resp, err := client_ops.ReadResponse(ctx, bufioReader, transport.ReadLineMaxLength, transport.HeadMaxLength)
 
-	err = catch.CatchCommonErr(err)
 	if err == nil {
-		err = catch.CatchContextCancel(ctx)
+		err = ctx.Err()
 	}
 	if err != nil {
-		conn.Close()
-		return nil, err
+		return nil, catch.CatchCommonErr(err)
+	}
+
+	if expectContinue && resp.StatusCode() == specs.StatusCodeContinue {
+		expectContinue = false
+		goto writeBody
 	}
 
 	hijacker, hasHijacker := ctx.Value(transportHijackerKey).(*TransportHijacker)
 
 	if !method.IsReplyable() || !resp.StatusCode().IsReplyable() {
-		if hasHijacker {
-			if header.Get("Connection") == "close" {
-				conn.Close()
-			} else {
-				hijacker.Conn = conn
-			}
-		} else {
-			conn.Close()
+		if hasHijacker && !strings.EqualFold(header.Get("Connection"), "close") {
+			hijacker.Conn = conn
+			cancelCloseConn()
 		}
 	} else {
 		contentEncoding := resp.Header().Get("Content-Encoding")
 		if contentEncoding != "" && !encoding.IsKnownEncoding(contentEncoding) {
-			conn.Close()
 			return nil, specs.ErrUnknownContentEncoding
 		}
 
-		extraBuffered, _ := headerReader.Peek(headerReader.Buffered())
-		reader := io.MultiReader(bytes.NewReader(extraBuffered), conn)
-
-		isChunked, err = encoding.IsChunkedTransfer(resp.Header())
+		var contentLength int64
+		isChunked, contentLength, err = parsing.ParseContentLength(resp.Header())
 		if err != nil {
-			conn.Close()
-			return nil, err
-		}
-
-		if isChunked {
-			if transport.MaxBodySize > 0 {
-				reader = io.LimitReader(reader, transport.MaxBodySize)
-			}
-		} else {
-			var contentLength int64
-			if contentLengthString := resp.Header().Get("Content-Length"); contentLengthString != "" {
-				contentLength, err = strconv.ParseInt(contentLengthString, 10, 64)
-				if err == nil {
-					if contentLength <= 0 {
-						reader = nil
-						conn.Close()
-					} else if transport.MaxBodySize > 0 && contentLength >= transport.MaxBodySize {
-						conn.Close()
-						return nil, specs.ErrTooLarge
-					}
-				}
-			}
-
-			if reader != nil {
-				if contentLength <= 0 && transport.MaxBodySize > 0 {
-					contentLength = transport.MaxBodySize
-				}
-
-				if contentLength > 0 {
-					reader = io.LimitReader(reader, contentLength)
-				}
-			}
-		}
-
-		if reader != nil {
-			var readerClosers internal.SeqCloser
-
-			readerClosers.Add(conn)
-
-			if isChunked {
-				reader = httputil.NewChunkedReader(reader)
-			}
-
-			if contentEncoding != "" {
-				var encodingReader io.ReadCloser
-				encodingReader, err = encoding.NewReader(contentEncoding, reader)
-				if err != nil {
-					conn.Close()
+			if errors.Is(err, parsing.ErrParsing) {
+				// Fail to parse Content-Length
+				stream.DefaultBufioReaderPool.Put(bufioReader)
+				if hasHijacker {
 					return nil, err
 				}
-				readerClosers.Add(encodingReader)
-				reader = encodingReader
-			}
-
-			resp.Reader = internal.ReadCloser(reader, &readerClosers)
-
-			if err = catch.CatchContextCancel(ctx); err != nil {
-				conn.Close()
+			} else {
 				return nil, err
 			}
+		} else if isChunked || contentLength > 0 {
+			if transport.MaxBodySize > 0 {
+				if isChunked {
+					contentLength = transport.MaxBodySize
+				} else if contentLength > transport.MaxBodySize {
+					return nil, specs.ErrTooLarge
+				}
+			}
+
+			encodingReader, err := encoding.NewReader(isChunked, contentEncoding, bufioReader)
+			if err != nil {
+				return nil, err
+			}
+
+			var bodyReader io.Reader = encodingReader
+
+			if contentLength > 0 {
+				bodyReader = io.LimitReader(bodyReader, contentLength)
+			}
+
+			cancelCloseConn()
+			resp.Reader = internal.ReadCloser(bodyReader, internal.CloserFunc(func() error {
+				stream.DefaultBufioReaderPool.Put(bufioReader)
+
+				err := encodingReader.Close()
+				err1 := conn.Close()
+				if err != nil {
+					return err
+				}
+				return err1
+			}))
 		}
 
 		if hasHijacker {
 			hijacker.Conn = conn
+			cancelCloseConn()
 		}
 	}
 
@@ -419,12 +410,16 @@ func (transport *Transport) dial(ctx context.Context, host string, port uint16) 
 		conn, err = defaultDialer.DialContext(ctx, "tcp", address)
 	}
 
-	return conn, err
+	return conn, catch.CatchCommonErr(err)
 }
 
 func (transport *Transport) dialProxy(ctx context.Context, conn net.Conn, scheme, host string, port uint16, creds *proxy.Creds) error {
 	if scheme == "http" {
 		return nil
+	}
+	if transport.ProxyDialTimeout > 0 {
+		conn.SetDeadline(time.Now().Add(transport.ProxyDialTimeout))
+		defer conn.SetDeadline(time.Time{})
 	}
 	return catch.CallWithTimeoutContextErr(ctx, transport.ProxyDialTimeout, func(ctx context.Context) error {
 		var err error
@@ -469,14 +464,29 @@ func (transport *Transport) dialTls(ctx context.Context, conn net.Conn, host str
 
 var transportHijackerKey = internal.FlagKey{Key: "transport.hijacker.key"}
 
+// WithTransportHijacker returns a copy of [context.Context] in which
+// the stored TransportHijacker.
+//
+// If hijacker stored Transport will not do anything else
+// with the connection when HTTP transaction ends.
+// If ClientResponse has Body and you close it,
+// it will also close net.Conn, keep this in mind.
+//
+// Used only with Transport or Client for intercept connection.
 func WithTransportHijacker(ctx context.Context) (*TransportHijacker, context.Context) {
 	if hijacker, has := ctx.Value(transportHijackerKey).(*TransportHijacker); has {
 		return hijacker, nil
 	}
-	hijacker := &TransportHijacker{}
+	hijacker := new(TransportHijacker)
 	return hijacker, context.WithValue(ctx, transportHijackerKey, hijacker)
 }
 
+// TransportHijacker container for store intercepted Transport connection.
+//
+// Creates only by WithTransportHijacker
 type TransportHijacker struct {
+	// Conn intercepted connection from Transport
+	//
+	// Can be nil if connection not stored
 	Conn net.Conn
 }

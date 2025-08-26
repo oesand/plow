@@ -3,6 +3,7 @@ package catch
 import (
 	"context"
 	"errors"
+	"github.com/oesand/plow/internal/server_ops"
 	"github.com/oesand/plow/specs"
 	"io"
 	"net"
@@ -32,14 +33,6 @@ func CatchCommonErr(err error) error {
 	return err
 }
 
-func CatchContextCancel(ctx context.Context) error {
-	err := CatchCommonErr(ctx.Err())
-	if err == nil {
-		return nil
-	}
-	return TryWrapOpErr("cause", err)
-}
-
 func TryWrapOpErr(op specs.OpName, err error) error {
 	if err == nil {
 		return nil
@@ -50,6 +43,9 @@ func TryWrapOpErr(op specs.OpName, err error) error {
 		return err
 	}
 	if _, ok := err.(*specs.OpError); ok {
+		return err
+	}
+	if _, ok := err.(*server_ops.ErrorResponse); ok {
 		return err
 	}
 	return &specs.OpError{
