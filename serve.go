@@ -190,7 +190,6 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 
 	for i := 0; true; i++ {
 		if i > 0 {
-			// TODO :: cover idle connection
 			idleTimeout := srv.IdleTimeout
 			if idleTimeout <= 0 {
 				idleTimeout = srv.ReadTimeout
@@ -239,8 +238,6 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 				wantKeepAlive = strings.EqualFold(req.Header().Get("Connection"), "keep-alive")
 			}
 		}
-
-		// TODO :: cover expect continue
 
 		// Expect 100 Continue support
 		var expectContinue bool

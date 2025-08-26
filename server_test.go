@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestServer_GetRequest(t *testing.T) {
@@ -981,5 +982,183 @@ func TestServer_RequestBodyTooLarge(t *testing.T) {
 	}
 	if resp.StatusCode != int(specs.StatusCodeRequestEntityTooLarge) {
 		t.Errorf("expected status code 413, go %d", resp.StatusCode)
+	}
+}
+
+func TestServer_Expect1OOContinue(t *testing.T) {
+	requestBody := []byte(`{"key": "value"}`)
+
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
+		if request.Header().Get("Expect") != "100-continue" ||
+			request.Header().Get("Content-Length") != strconv.Itoa(len(requestBody)) {
+			t.Errorf("not found expected headers: %+v", request.Header())
+		}
+
+		buf, err := io.ReadAll(request.Body())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(buf, requestBody) {
+			t.Errorf("expected %s, got %s", string(requestBody), string(buf))
+		}
+
+		return TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "okay")
+	}))
+
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go server.Serve(listener)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	url := specs.MustParseUrl("http://" + listener.Addr().String())
+
+	address := client_ops.HostPort(url.Host, url.Port)
+	conn, err := defaultDialer.Dial("tcp", address)
+	if err != nil {
+		t.Error(err)
+	}
+	conn.SetDeadline(time.Now().Add(10 * time.Second))
+
+	header := specs.NewHeader()
+	header.Set("Expect", "100-continue")
+	header.Set("Content-Length", strconv.Itoa(len(requestBody)))
+
+	_, err = client_ops.WriteRequestHead(conn, specs.HttpMethodPost, url.Path, url.Query, header)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Read continue
+	bufioReader := bufio.NewReader(conn)
+	resp, err := client_ops.ReadResponse(ctx, bufioReader, 1024, 8*1024)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if resp.StatusCode() != specs.StatusCodeContinue {
+		t.Errorf("invalid status code %d, expect continue", resp.StatusCode())
+	}
+
+	// Write Body
+	_, err = conn.Write(requestBody)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Read Response
+	resp, err = client_ops.ReadResponse(ctx, bufioReader, 1024, 8*1024)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if resp.StatusCode() != specs.StatusCodeOK {
+		t.Errorf("invalid status code %d, expect OK", resp.StatusCode())
+	}
+
+	if resp.Header().Get("Content-Length") != "4" {
+		t.Errorf("not found expected headers: %+v", resp.Header())
+	}
+
+	buf := make([]byte, 4)
+	_, err = io.ReadFull(bufioReader, buf)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if !bytes.Equal(buf, []byte("okay")) {
+		t.Errorf("unexpected response body '%s'", buf)
+	}
+}
+
+func TestServer_IdleConn(t *testing.T) {
+	var requestIndex atomic.Int32
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
+		strIndex := strconv.Itoa(int(requestIndex.Load()))
+		requestBody := []byte("request-body-" + strIndex)
+
+		if request.Header().Get("Content-Length") != strconv.Itoa(len(requestBody)) {
+			t.Errorf("not found expected headers: %+v", request.Header())
+		}
+
+		buf, err := io.ReadAll(request.Body())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(buf, requestBody) {
+			t.Errorf("expected %s, got %s", string(requestBody), string(buf))
+		}
+
+		return TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "okay-"+strIndex)
+	}))
+
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go server.Serve(listener)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	url := specs.MustParseUrl("http://" + listener.Addr().String())
+
+	address := client_ops.HostPort(url.Host, url.Port)
+	conn, err := defaultDialer.Dial("tcp", address)
+	if err != nil {
+		t.Error(err)
+	}
+	conn.SetDeadline(time.Now().Add(10 * time.Second))
+
+	bufioReader := bufio.NewReader(conn)
+	for requestIndex.Load() < 3 {
+		requestIndex.Add(1)
+
+		strIndex := strconv.Itoa(int(requestIndex.Load()))
+		requestBody := []byte("request-body-" + strIndex)
+		responseBody := []byte("okay-" + strIndex)
+
+		header := specs.NewHeader()
+		header.Set("Content-Length", strconv.Itoa(len(requestBody)))
+
+		_, err = client_ops.WriteRequestHead(conn, specs.HttpMethodPost, url.Path, url.Query, header)
+		if err != nil {
+			t.Error(err)
+		}
+
+		// Write Body
+		_, err = conn.Write(requestBody)
+		if err != nil {
+			t.Error(err)
+		}
+
+		// Read Response
+		resp, err := client_ops.ReadResponse(ctx, bufioReader, 1024, 8*1024)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if resp.StatusCode() != specs.StatusCodeOK {
+			t.Errorf("invalid status code %d, expect OK", resp.StatusCode())
+		}
+
+		if resp.Header().Get("Content-Length") != strconv.Itoa(len(responseBody)) {
+			t.Errorf("not found expected headers: %+v", resp.Header())
+		}
+
+		buf := make([]byte, len(responseBody))
+		_, err = io.ReadFull(bufioReader, buf)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if !bytes.Equal(buf, responseBody) {
+			t.Errorf("unexpected response body '%s', expected '%s'", buf, responseBody)
+		}
 	}
 }

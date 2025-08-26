@@ -25,6 +25,7 @@ func DefaultServer(handler Handler) *Server {
 		ReadLineMaxLength:   1024,
 		HeadMaxLength:       8 * 1024,
 		MaxBodySize:         10 << 20, // 10 mb
+		IdleTimeout:         20 * time.Second,
 		ReadTimeout:         10 * time.Second,
 		WriteTimeout:        10 * time.Second,
 		TLSHandshakeTimeout: 5 * time.Second,

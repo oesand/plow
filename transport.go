@@ -464,14 +464,29 @@ func (transport *Transport) dialTls(ctx context.Context, conn net.Conn, host str
 
 var transportHijackerKey = internal.FlagKey{Key: "transport.hijacker.key"}
 
+// WithTransportHijacker returns a copy of [context.Context] in which
+// the stored TransportHijacker.
+//
+// If hijacker stored Transport will not do anything else
+// with the connection when HTTP transaction ends.
+// If ClientResponse has Body and you close it,
+// it will also close net.Conn, keep this in mind.
+//
+// Used only with Transport or Client for intercept connection.
 func WithTransportHijacker(ctx context.Context) (*TransportHijacker, context.Context) {
 	if hijacker, has := ctx.Value(transportHijackerKey).(*TransportHijacker); has {
 		return hijacker, nil
 	}
-	hijacker := &TransportHijacker{}
+	hijacker := new(TransportHijacker)
 	return hijacker, context.WithValue(ctx, transportHijackerKey, hijacker)
 }
 
+// TransportHijacker container for store intercepted Transport connection.
+//
+// Creates only by WithTransportHijacker
 type TransportHijacker struct {
+	// Conn intercepted connection from Transport
+	//
+	// Can be nil if connection not stored
 	Conn net.Conn
 }

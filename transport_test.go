@@ -881,7 +881,7 @@ func TestTransport_HttpsProxyAuth(t *testing.T) {
 
 // Test Expectation
 
-func TestTransport_ExpectContinueTcp(t *testing.T) {
+func TestTransport_Expect100ContinueRaw(t *testing.T) {
 	requestBody := []byte(`{"key": "value"}`)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -913,7 +913,7 @@ func TestTransport_ExpectContinueTcp(t *testing.T) {
 		}
 
 		buf := make([]byte, len(requestBody))
-		_, err = io.ReadFull(conn, buf)
+		_, err = io.ReadFull(bufioReader, buf)
 		if err != nil {
 			t.Error(err)
 		}
@@ -953,7 +953,7 @@ func TestTransport_ExpectContinueTcp(t *testing.T) {
 	checkResponseBody(t, resp, []byte("okay"))
 }
 
-func TestTransport_ExpectContinueHttp(t *testing.T) {
+func TestTransport_Expect100ContinueHttp(t *testing.T) {
 	requestBody := []byte(`{"key": "value"}`)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -982,4 +982,117 @@ func TestTransport_ExpectContinueHttp(t *testing.T) {
 	}
 
 	checkResponseBody(t, resp, []byte("okay"))
+}
+
+// Test Hijack
+
+func TestTransport_Hijack(t *testing.T) {
+	requestBody := []byte(`{"key": "value"}`)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	listener, err := serveTcpTest(ctx, func(conn net.Conn) {
+		// Reading
+		bufioReader := bufio.NewReader(conn)
+		req, err := server_ops.ReadRequest(ctx, conn.RemoteAddr(), bufioReader, 1024, 8*1024)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if req.Header().Get("Content-Length") != "16" {
+			t.Errorf("unexpected headers, %+v", req.Header())
+		}
+
+		buf := make([]byte, len(requestBody))
+		_, err = io.ReadFull(bufioReader, buf)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if !bytes.Equal(buf, requestBody) {
+			t.Errorf("expect '%s', got '%s'", requestBody, buf)
+		}
+
+		// Writing
+		header := specs.NewHeader()
+		header.Set("Content-Length", "4")
+		_, err = server_ops.WriteResponseHead(conn, true, specs.StatusCodeOK, header)
+		if err != nil {
+			t.Error(err)
+		}
+
+		_, err = conn.Write([]byte("okay"))
+		if err != nil {
+			t.Error(err)
+		}
+
+		// After hijack
+
+		buf = make([]byte, 4)
+		_, err = io.ReadFull(bufioReader, buf)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if !bytes.Equal(buf, []byte("ping")) {
+			t.Errorf("unexpected pong response '%s'", buf)
+		}
+
+		_, err = conn.Write([]byte("pong"))
+		if err != nil {
+			t.Error(err)
+		}
+	})
+	defer func() {
+		cancel()
+		listener.Close()
+	}()
+
+	url := specs.MustParseUrl("http://" + listener.Addr().String())
+	req := BufferRequest(specs.HttpMethodPost, url, specs.ContentTypePlain, requestBody)
+	hijacker, ctx := WithTransportHijacker(ctx)
+
+	resp, err := DefaultTransport().RoundTrip(ctx, req.Method(), req.Url(), req.Header(), req.(BodyWriter))
+
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	if resp.StatusCode() != specs.StatusCodeOK {
+		t.Error("invalid status code:", resp.StatusCode())
+	}
+
+	body := resp.Body()
+	if body == nil {
+		t.Error("response body is nil")
+	}
+	defer body.Close()
+
+	data, err := io.ReadAll(body)
+	if err != nil {
+		t.Error("read all:", err)
+	}
+
+	if !bytes.Equal(data, []byte("okay")) {
+		t.Error("invalid response:", string(data))
+	}
+
+	conn := hijacker.Conn
+	if conn == nil {
+		t.Error("conn not hijacked")
+	}
+
+	_, err = conn.Write([]byte("ping"))
+	if err != nil {
+		t.Error(err)
+	}
+
+	buf := make([]byte, 4)
+	_, err = io.ReadFull(conn, buf)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if !bytes.Equal(buf, []byte("pong")) {
+		t.Errorf("unexpected pong response '%s'", buf)
+	}
 }

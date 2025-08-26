@@ -8,7 +8,6 @@ import (
 
 var ErrParsing = errors.New("cannot parse value")
 
-// TODO :: Add tests
 func ParseContentLength(header *specs.Header) (isChunked bool, size int64, err error) {
 	if te, has := header.TryGet("Transfer-Encoding"); has {
 		switch te {
