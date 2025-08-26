@@ -885,7 +885,8 @@ func TestTransport_Expect100ContinueRaw(t *testing.T) {
 	requestBody := []byte(`{"key": "value"}`)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	listener, err := serveTcpTest(ctx, func(conn net.Conn) {
+	defer cancel()
+	url, err := serveTcpTest(ctx, func(conn net.Conn) {
 		bufioReader := bufio.NewReader(conn)
 		req, err := server_ops.ReadRequest(ctx, conn.RemoteAddr(), bufioReader, 1024, 8*1024)
 		if err != nil {
@@ -935,12 +936,7 @@ func TestTransport_Expect100ContinueRaw(t *testing.T) {
 		}
 
 	})
-	defer func() {
-		cancel()
-		listener.Close()
-	}()
 
-	url := specs.MustParseUrl("http://" + listener.Addr().String())
 	req := BufferRequest(specs.HttpMethodPost, url, specs.ContentTypePlain, requestBody)
 	req.Header().Set("Expect", "100-continue")
 
@@ -990,7 +986,8 @@ func TestTransport_Hijack(t *testing.T) {
 	requestBody := []byte(`{"key": "value"}`)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	listener, err := serveTcpTest(ctx, func(conn net.Conn) {
+	defer cancel()
+	url, err := serveTcpTest(ctx, func(conn net.Conn) {
 		// Reading
 		bufioReader := bufio.NewReader(conn)
 		req, err := server_ops.ReadRequest(ctx, conn.RemoteAddr(), bufioReader, 1024, 8*1024)
@@ -1042,12 +1039,7 @@ func TestTransport_Hijack(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	defer func() {
-		cancel()
-		listener.Close()
-	}()
 
-	url := specs.MustParseUrl("http://" + listener.Addr().String())
 	req := BufferRequest(specs.HttpMethodPost, url, specs.ContentTypePlain, requestBody)
 	hijacker, ctx := WithTransportHijacker(ctx)
 

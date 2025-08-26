@@ -447,7 +447,7 @@ func TestUpgraderNetWebsocket(t *testing.T) {
 			break
 		}
 		if !bytes.Equal(buf, []byte("Answer: "+input)) {
-			t.Fatalf("Invalid client received: %s \n", buf)
+			t.Errorf("Invalid client received: %s \n", buf)
 		}
 		t.Logf("Client received: %s \n", buf)
 	}

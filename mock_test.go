@@ -60,20 +60,24 @@ func checkHttpResponseBody(t *testing.T, resp *http.Response, expected []byte) {
 	}
 }
 
-func serveTcpTest(ctx context.Context, handler func(net.Conn)) (net.Listener, error) {
+func serveTcpTest(ctx context.Context, handler func(net.Conn)) (*specs.Url, error) {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		return nil, err
 	}
 
-	go func() {
-		var conn net.Conn
-		for {
-			conn, err = listener.Accept()
+	url := specs.MustParseUrl("http://" + listener.Addr().String())
 
-			select {
-			case <-ctx.Done():
-			default:
+	go func() {
+		for {
+			conn, err := listener.Accept()
+
+			if ctx.Err() != nil {
+				if err == nil {
+					conn.Close()
+				}
+				listener.Close()
+				return
 			}
 
 			if err != nil {
@@ -83,19 +87,21 @@ func serveTcpTest(ctx context.Context, handler func(net.Conn)) (net.Listener, er
 					continue
 				}
 			}
+
+			handler(conn)
+
+			listener.Close()
 			break
 		}
-
-		handler(conn)
 	}()
 
-	return listener, err
+	return url, err
 }
 
 func newTestServer(handler func(req Request) (specs.StatusCode, *specs.Header, []byte)) (func(), *specs.Url) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	listener, err := serveTcpTest(ctx, func(conn net.Conn) {
+	url, err := serveTcpTest(ctx, func(conn net.Conn) {
 		bufioReader := bufio.NewReader(conn)
 
 		req, err := server_ops.ReadRequest(ctx, conn.RemoteAddr(), bufioReader, 1024, 8*1024)
@@ -122,14 +128,7 @@ func newTestServer(handler func(req Request) (specs.StatusCode, *specs.Header, [
 		panic(err)
 	}
 
-	closeFunc := func() {
-		cancel()
-		listener.Close()
-	}
-
-	url := specs.MustParseUrl("http://" + listener.Addr().String())
-
-	return closeFunc, url
+	return cancel, url
 }
 
 func newTestClientSend(method specs.HttpMethod, url *specs.Url, header *specs.Header, body []byte) (ClientResponse, net.Conn, error) {
