@@ -208,7 +208,7 @@ func (cln *Client) MakeContext(ctx context.Context, request ClientRequest) (Clie
 				redirectUrl.Host = url.Host
 				redirectUrl.Port = url.Port
 			}
-			url = *redirectUrl
+			url = redirectUrl
 
 			continue
 		}

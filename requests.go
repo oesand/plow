@@ -23,7 +23,7 @@ func EmptyRequest(method specs.HttpMethod, url *specs.Url) ClientRequest {
 	}
 	return &emptyRequest{
 		method: method,
-		url:    *url,
+		url:    url,
 		header: specs.NewHeader(),
 	}
 }
@@ -32,7 +32,7 @@ type emptyRequest struct {
 	_ internal.NoCopy
 
 	method specs.HttpMethod
-	url    specs.Url
+	url    *specs.Url
 	header *specs.Header
 }
 
@@ -40,7 +40,7 @@ func (req *emptyRequest) Method() specs.HttpMethod {
 	return req.method
 }
 
-func (req *emptyRequest) Url() specs.Url {
+func (req *emptyRequest) Url() *specs.Url {
 	return req.url
 }
 

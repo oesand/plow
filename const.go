@@ -27,8 +27,6 @@ var (
 		KeepAlive: 10 * time.Second,
 	}
 
-	responseContinueBuf = []byte("HTTP/1.1 100 Continue\r\n\r\n")
-
 	responseErrDowngradeHTTPS = &server_ops.ErrorResponse{
 		Code: specs.StatusCodeBadRequest,
 		Text: "http: sent an HTTP request to an HTTPS server.",
