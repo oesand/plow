@@ -55,7 +55,7 @@ type ClientRequest interface {
 	Method() specs.HttpMethod
 
 	// Url specifies the URL for client requests.
-	Url() specs.Url
+	Url() *specs.Url
 
 	// Header contains the request header fields and cookies
 	// to be sent by the client in HTTP request.

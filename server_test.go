@@ -985,6 +985,8 @@ func TestServer_RequestBodyTooLarge(t *testing.T) {
 	}
 }
 
+// TestContinue
+
 func TestServer_Expect1OOContinue(t *testing.T) {
 	requestBody := []byte(`{"key": "value"}`)
 
@@ -1052,6 +1054,71 @@ func TestServer_Expect1OOContinue(t *testing.T) {
 
 	// Read Response
 	resp, err = client_ops.ReadResponse(ctx, bufioReader, 1024, 8*1024)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if resp.StatusCode() != specs.StatusCodeOK {
+		t.Errorf("invalid status code %d, expect OK", resp.StatusCode())
+	}
+
+	if resp.Header().Get("Content-Length") != "4" {
+		t.Errorf("not found expected headers: %+v", resp.Header())
+	}
+
+	buf := make([]byte, 4)
+	_, err = io.ReadFull(bufioReader, buf)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if !bytes.Equal(buf, []byte("okay")) {
+		t.Errorf("unexpected response body '%s'", buf)
+	}
+}
+
+func TestServer_Expect1OOContinueAndNotRead(t *testing.T) {
+	requestBody := []byte(`{"key": "value"}`)
+
+	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
+		if request.Header().Get("Expect") != "100-continue" ||
+			request.Header().Get("Content-Length") != strconv.Itoa(len(requestBody)) {
+			t.Errorf("not found expected headers: %+v", request.Header())
+		}
+
+		return TextResponse(specs.StatusCodeOK, specs.ContentTypePlain, "okay")
+	}))
+
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go server.Serve(listener)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	url := specs.MustParseUrl("http://" + listener.Addr().String())
+
+	address := client_ops.HostPort(url.Host, url.Port)
+	conn, err := defaultDialer.Dial("tcp", address)
+	if err != nil {
+		t.Error(err)
+	}
+	conn.SetDeadline(time.Now().Add(10 * time.Second))
+
+	header := specs.NewHeader()
+	header.Set("Expect", "100-continue")
+	header.Set("Content-Length", strconv.Itoa(len(requestBody)))
+
+	_, err = client_ops.WriteRequestHead(conn, specs.HttpMethodPost, url.Path, url.Query, header)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Read Response
+	bufioReader := bufio.NewReader(conn)
+	resp, err := client_ops.ReadResponse(ctx, bufioReader, 1024, 8*1024)
 	if err != nil {
 		t.Error(err)
 	}

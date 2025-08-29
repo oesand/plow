@@ -212,10 +212,6 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 			conn.SetReadDeadline(time.Now().Add(srv.ReadTimeout))
 		}
 
-		if srv.WriteTimeout > 0 {
-			conn.SetWriteDeadline(time.Now().Add(srv.WriteTimeout))
-		}
-
 		req, err := server_ops.ReadRequest(ctx, conn.RemoteAddr(), bufioReader, srv.ReadLineMaxLength, srv.HeadMaxLength)
 
 		if err == nil {
@@ -293,19 +289,20 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 					reader = io.LimitReader(reader, contentLength)
 				}
 
-				if expectContinue {
-					_, err = conn.Write(responseContinueBuf)
-					if err != nil {
-						return err
-					}
-				}
-
 				req.BodyReader = reader
 			}
 		}
 
 		if err = ctx.Err(); err != nil {
 			return err
+		}
+
+		if srv.WriteTimeout > 0 {
+			conn.SetWriteDeadline(time.Now().Add(srv.WriteTimeout))
+		}
+
+		if req.BodyReader != nil && expectContinue {
+			req.BodyReader = server_ops.ExpectContinueReader(req.BodyReader, conn)
 		}
 
 		resp := handler.Handle(ctx, req)

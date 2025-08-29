@@ -130,7 +130,7 @@ type Transport struct {
 }
 
 // RoundTrip implements the [RoundTripper] interface.
-func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMethod, url specs.Url, header *specs.Header, writer BodyWriter) (ClientResponse, error) {
+func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMethod, url *specs.Url, header *specs.Header, writer BodyWriter) (ClientResponse, error) {
 	if ctx == nil {
 		panic("plow: nil context pointer")
 	}
@@ -159,7 +159,7 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 	var err error
 	var proxyUrl *specs.Url
 	if transport.Proxy != nil {
-		proxyUrl, err = transport.Proxy(&url)
+		proxyUrl, err = transport.Proxy(url)
 		if err != nil {
 			return nil, err
 		}

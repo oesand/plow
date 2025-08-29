@@ -35,7 +35,7 @@ func TestDialer_UnsupportedScheme(t *testing.T) {
 func TestDialer_StatusCodeNotSwitching(t *testing.T) {
 	d := DefaultDialer()
 	c := &plow.Client{
-		Transport: plow.RoundTripperFunc(func(ctx context.Context, method specs.HttpMethod, url specs.Url, header *specs.Header, writer plow.BodyWriter) (plow.ClientResponse, error) {
+		Transport: plow.RoundTripperFunc(func(ctx context.Context, method specs.HttpMethod, url *specs.Url, header *specs.Header, writer plow.BodyWriter) (plow.ClientResponse, error) {
 			return mock.ClientResponse(specs.StatusCodeOK, nil), nil
 		}),
 	}
@@ -48,7 +48,7 @@ func TestDialer_StatusCodeNotSwitching(t *testing.T) {
 func TestDialer_ResponseHasBody(t *testing.T) {
 	d := DefaultDialer()
 	c := &plow.Client{
-		Transport: plow.RoundTripperFunc(func(ctx context.Context, method specs.HttpMethod, url specs.Url, header *specs.Header, writer plow.BodyWriter) (plow.ClientResponse, error) {
+		Transport: plow.RoundTripperFunc(func(ctx context.Context, method specs.HttpMethod, url *specs.Url, header *specs.Header, writer plow.BodyWriter) (plow.ClientResponse, error) {
 			return mock.ClientResponse(specs.StatusCodeSwitchingProtocols, io.NopCloser(bytes.NewReader([]byte("x")))), nil
 		}),
 	}
@@ -61,7 +61,7 @@ func TestDialer_ResponseHasBody(t *testing.T) {
 func TestDialer_BadUpgradeHeaders(t *testing.T) {
 	d := DefaultDialer()
 	c := &plow.Client{
-		Transport: plow.RoundTripperFunc(func(ctx context.Context, method specs.HttpMethod, url specs.Url, header *specs.Header, writer plow.BodyWriter) (plow.ClientResponse, error) {
+		Transport: plow.RoundTripperFunc(func(ctx context.Context, method specs.HttpMethod, url *specs.Url, header *specs.Header, writer plow.BodyWriter) (plow.ClientResponse, error) {
 			resp := mock.ClientResponse(specs.StatusCodeSwitchingProtocols, nil)
 			resp.Header().Set("Connection", "keep-alive")
 			return resp, nil
@@ -76,7 +76,7 @@ func TestDialer_BadUpgradeHeaders(t *testing.T) {
 func TestDialer_BadAcceptKey(t *testing.T) {
 	d := DefaultDialer()
 	c := &plow.Client{
-		Transport: plow.RoundTripperFunc(func(ctx context.Context, method specs.HttpMethod, url specs.Url, header *specs.Header, writer plow.BodyWriter) (plow.ClientResponse, error) {
+		Transport: plow.RoundTripperFunc(func(ctx context.Context, method specs.HttpMethod, url *specs.Url, header *specs.Header, writer plow.BodyWriter) (plow.ClientResponse, error) {
 			resp := mock.ClientResponse(specs.StatusCodeSwitchingProtocols, nil)
 			resp.Header().Set("Connection", "Upgrade")
 			resp.Header().Set("Upgrade", "websocket")
@@ -94,7 +94,7 @@ func TestDialer_ProtocolMismatch(t *testing.T) {
 	d := DefaultDialer()
 	d.Protocols = []string{"proto1"}
 	c := &plow.Client{
-		Transport: plow.RoundTripperFunc(func(ctx context.Context, method specs.HttpMethod, url specs.Url, header *specs.Header, writer plow.BodyWriter) (plow.ClientResponse, error) {
+		Transport: plow.RoundTripperFunc(func(ctx context.Context, method specs.HttpMethod, url *specs.Url, header *specs.Header, writer plow.BodyWriter) (plow.ClientResponse, error) {
 			resp := mock.ClientResponse(specs.StatusCodeSwitchingProtocols, nil)
 			resp.Header().Set("Connection", "Upgrade")
 			resp.Header().Set("Upgrade", "websocket")
@@ -112,7 +112,7 @@ func TestDialer_ProtocolMismatch(t *testing.T) {
 func TestDialer_NoHijackedConn(t *testing.T) {
 	d := DefaultDialer()
 	c := &plow.Client{
-		Transport: plow.RoundTripperFunc(func(ctx context.Context, method specs.HttpMethod, url specs.Url, header *specs.Header, writer plow.BodyWriter) (plow.ClientResponse, error) {
+		Transport: plow.RoundTripperFunc(func(ctx context.Context, method specs.HttpMethod, url *specs.Url, header *specs.Header, writer plow.BodyWriter) (plow.ClientResponse, error) {
 			resp := mock.ClientResponse(specs.StatusCodeSwitchingProtocols, nil)
 			resp.Header().Set("Connection", "Upgrade")
 			resp.Header().Set("Upgrade", "websocket")
@@ -130,7 +130,7 @@ func TestDialer_Success(t *testing.T) {
 	d := DefaultDialer()
 	d.Protocols = []string{"proto1"}
 	c := &plow.Client{
-		Transport: plow.RoundTripperFunc(func(ctx context.Context, method specs.HttpMethod, url specs.Url, header *specs.Header, writer plow.BodyWriter) (plow.ClientResponse, error) {
+		Transport: plow.RoundTripperFunc(func(ctx context.Context, method specs.HttpMethod, url *specs.Url, header *specs.Header, writer plow.BodyWriter) (plow.ClientResponse, error) {
 			resp := mock.ClientResponse(specs.StatusCodeSwitchingProtocols, nil)
 			resp.Header().Set("Connection", "Upgrade")
 			resp.Header().Set("Upgrade", "websocket")

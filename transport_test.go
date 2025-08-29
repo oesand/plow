@@ -34,7 +34,7 @@ func TestTransport_GetRequest(t *testing.T) {
 	defer server.Close()
 
 	resp, err := DefaultTransport().RoundTrip(
-		context.Background(), specs.HttpMethodGet, *specs.MustParseUrl(server.URL), specs.NewHeader(), nil)
+		context.Background(), specs.HttpMethodGet, specs.MustParseUrl(server.URL), specs.NewHeader(), nil)
 
 	if err != nil {
 		t.Fatal("req:", err)
@@ -98,7 +98,7 @@ func TestTransport_ChunkedTransferEncoding(t *testing.T) {
 	})
 	defer closeServer()
 
-	resp, err := DefaultTransport().RoundTrip(context.Background(), specs.HttpMethodGet, *url, specs.NewHeader(), nil)
+	resp, err := DefaultTransport().RoundTrip(context.Background(), specs.HttpMethodGet, url, specs.NewHeader(), nil)
 
 	if err != nil {
 		t.Fatal("req:", err)
@@ -247,7 +247,7 @@ func TestTransport_GzipEncoding(t *testing.T) {
 	})
 	defer closeServer()
 
-	resp, err := DefaultTransport().RoundTrip(context.Background(), specs.HttpMethodGet, *url, specs.NewHeader(), nil)
+	resp, err := DefaultTransport().RoundTrip(context.Background(), specs.HttpMethodGet, url, specs.NewHeader(), nil)
 
 	if err != nil {
 		t.Fatal("req:", err)
@@ -277,7 +277,7 @@ func TestTransport_DeflateEncoding(t *testing.T) {
 	})
 	defer closeServer()
 
-	resp, err := DefaultTransport().RoundTrip(context.Background(), specs.HttpMethodGet, *url, specs.NewHeader(), nil)
+	resp, err := DefaultTransport().RoundTrip(context.Background(), specs.HttpMethodGet, url, specs.NewHeader(), nil)
 
 	if err != nil {
 		t.Fatal("req:", err)
@@ -306,7 +306,7 @@ func TestTransport_BrotliEncoding(t *testing.T) {
 	})
 	defer closeServer()
 
-	resp, err := DefaultTransport().RoundTrip(context.Background(), specs.HttpMethodGet, *url, specs.NewHeader(), nil)
+	resp, err := DefaultTransport().RoundTrip(context.Background(), specs.HttpMethodGet, url, specs.NewHeader(), nil)
 
 	if err != nil {
 		t.Fatal("req:", err)
@@ -340,7 +340,7 @@ func TestTransport_ChunkedAndGzipEncoding(t *testing.T) {
 	})
 	defer closeServer()
 
-	resp, err := DefaultTransport().RoundTrip(context.Background(), specs.HttpMethodGet, *url, specs.NewHeader(), nil)
+	resp, err := DefaultTransport().RoundTrip(context.Background(), specs.HttpMethodGet, url, specs.NewHeader(), nil)
 
 	if err != nil {
 		t.Fatal("req:", err)
@@ -371,7 +371,7 @@ func TestTransport_ChunkedAndDeflateEncoding(t *testing.T) {
 	})
 	defer closeServer()
 
-	resp, err := DefaultTransport().RoundTrip(context.Background(), specs.HttpMethodGet, *url, specs.NewHeader(), nil)
+	resp, err := DefaultTransport().RoundTrip(context.Background(), specs.HttpMethodGet, url, specs.NewHeader(), nil)
 
 	if err != nil {
 		t.Fatal("req:", err)
@@ -402,7 +402,7 @@ func TestTransport_ChunkedAndBrotliEncoding(t *testing.T) {
 	})
 	defer closeServer()
 
-	resp, err := DefaultTransport().RoundTrip(context.Background(), specs.HttpMethodGet, *url, specs.NewHeader(), nil)
+	resp, err := DefaultTransport().RoundTrip(context.Background(), specs.HttpMethodGet, url, specs.NewHeader(), nil)
 
 	if err != nil {
 		t.Fatal("req:", err)
@@ -432,7 +432,7 @@ func TestTransport_GetRequestTLS(t *testing.T) {
 		InsecureSkipVerify: true,
 	}
 
-	resp, err := transport.RoundTrip(context.Background(), specs.HttpMethodGet, *specs.MustParseUrl(url), specs.NewHeader(), nil)
+	resp, err := transport.RoundTrip(context.Background(), specs.HttpMethodGet, specs.MustParseUrl(url), specs.NewHeader(), nil)
 
 	if err != nil {
 		t.Fatal("req:", err)
@@ -537,7 +537,7 @@ func TestTransport_Sock5Proxy(t *testing.T) {
 	transport := DefaultTransport()
 	transport.Proxy = FixedProxyUrl(specs.MustParseUrl("socks5://" + proxyListener.Addr().String()))
 
-	resp, err := transport.RoundTrip(context.Background(), specs.HttpMethodGet, *url, header, nil)
+	resp, err := transport.RoundTrip(context.Background(), specs.HttpMethodGet, url, header, nil)
 
 	if err != nil {
 		t.Fatal("req:", err)
@@ -611,7 +611,7 @@ func TestTransport_Sock5ProxyAuth(t *testing.T) {
 	transport := DefaultTransport()
 	transport.Proxy = FixedProxyUrl(specs.MustParseUrl("socks5h://username:password@" + proxyListener.Addr().String()))
 
-	resp, err := transport.RoundTrip(context.Background(), specs.HttpMethodGet, *url, header, nil)
+	resp, err := transport.RoundTrip(context.Background(), specs.HttpMethodGet, url, header, nil)
 
 	if err != nil {
 		t.Fatal("req:", err)
@@ -653,7 +653,7 @@ func TestTransport_HttpProxy(t *testing.T) {
 	transport.Proxy = FixedProxyUrl(proxyUrl)
 
 	url := specs.MustParseUrl("http://test.org/")
-	resp, err := transport.RoundTrip(context.Background(), specs.HttpMethodGet, *url, header, nil)
+	resp, err := transport.RoundTrip(context.Background(), specs.HttpMethodGet, url, header, nil)
 
 	if err != nil {
 		t.Fatal("req:", err)
@@ -699,7 +699,7 @@ func TestTransport_HttpProxyAuth(t *testing.T) {
 	transport.Proxy = FixedProxyUrl(proxyUrl)
 
 	url := specs.MustParseUrl("http://test.org/")
-	resp, err := transport.RoundTrip(context.Background(), specs.HttpMethodGet, *url, header, nil)
+	resp, err := transport.RoundTrip(context.Background(), specs.HttpMethodGet, url, header, nil)
 
 	if err != nil {
 		t.Fatal("req:", err)
@@ -776,7 +776,7 @@ func TestTransport_HttpsProxy(t *testing.T) {
 	proxyUrl.Scheme = "https"
 	transport.Proxy = FixedProxyUrl(proxyUrl)
 
-	resp, err := transport.RoundTrip(context.Background(), specs.HttpMethodGet, *url, header, nil)
+	resp, err := transport.RoundTrip(context.Background(), specs.HttpMethodGet, url, header, nil)
 
 	if err != nil {
 		t.Fatal("req:", err)
@@ -862,7 +862,7 @@ func TestTransport_HttpsProxyAuth(t *testing.T) {
 	proxyUrl.Password = "pass"
 	transport.Proxy = FixedProxyUrl(proxyUrl)
 
-	resp, err := transport.RoundTrip(context.Background(), specs.HttpMethodGet, *url, header, nil)
+	resp, err := transport.RoundTrip(context.Background(), specs.HttpMethodGet, url, header, nil)
 
 	if err != nil {
 		t.Fatal("req:", err)
@@ -908,7 +908,7 @@ func TestTransport_Expect100ContinueRaw(t *testing.T) {
 		}
 		conn.SetReadDeadline(time.Time{})
 
-		_, err = conn.Write(responseContinueBuf)
+		_, err = conn.Write(server_ops.ResponseContinueBuf)
 		if err != nil {
 			t.Error(err)
 		}
@@ -921,6 +921,49 @@ func TestTransport_Expect100ContinueRaw(t *testing.T) {
 
 		if !bytes.Equal(buf, requestBody) {
 			t.Errorf("expect '%s', got '%s'", requestBody, buf)
+		}
+
+		header := specs.NewHeader()
+		header.Set("Content-Length", "4")
+		_, err = server_ops.WriteResponseHead(conn, true, specs.StatusCodeOK, header)
+		if err != nil {
+			t.Error(err)
+		}
+
+		_, err = conn.Write([]byte("okay"))
+		if err != nil {
+			t.Error(err)
+		}
+
+	})
+
+	req := BufferRequest(specs.HttpMethodPost, url, specs.ContentTypePlain, requestBody)
+	req.Header().Set("Expect", "100-continue")
+
+	resp, err := DefaultTransport().RoundTrip(ctx, req.Method(), req.Url(), req.Header(), req.(BodyWriter))
+
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	checkResponseBody(t, resp, []byte("okay"))
+}
+
+func TestTransport_Expect100ContinueAndAnswerOK(t *testing.T) {
+	requestBody := []byte(`{"key": "value"}`)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	url, err := serveTcpTest(ctx, func(conn net.Conn) {
+		bufioReader := bufio.NewReader(conn)
+		req, err := server_ops.ReadRequest(ctx, conn.RemoteAddr(), bufioReader, 1024, 8*1024)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if req.Header().Get("Expect") != "100-continue" ||
+			req.Header().Get("Content-Length") != "16" {
+			t.Errorf("unexpected headers, %+v", req.Header())
 		}
 
 		header := specs.NewHeader()

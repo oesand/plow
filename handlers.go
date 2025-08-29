@@ -36,7 +36,7 @@ type ErrorHandler interface {
 type RoundTripper interface {
 	// RoundTrip executes a single HTTP transaction,
 	// returning a [ClientResponse] for the provided request parts.
-	RoundTrip(ctx context.Context, method specs.HttpMethod, url specs.Url, header *specs.Header, writer BodyWriter) (ClientResponse, error)
+	RoundTrip(ctx context.Context, method specs.HttpMethod, url *specs.Url, header *specs.Header, writer BodyWriter) (ClientResponse, error)
 }
 
 // Dialer is an interface representing the ability to connection over network to address.
@@ -70,10 +70,10 @@ func (f ErrorHandlerFunc) HandleError(ctx context.Context, conn net.Conn, err an
 }
 
 // RoundTripperFunc shorthand implementation for [RoundTripper]
-type RoundTripperFunc func(ctx context.Context, method specs.HttpMethod, url specs.Url, header *specs.Header, writer BodyWriter) (ClientResponse, error)
+type RoundTripperFunc func(ctx context.Context, method specs.HttpMethod, url *specs.Url, header *specs.Header, writer BodyWriter) (ClientResponse, error)
 
 // RoundTrip triggers top level function [RoundTripperFunc]
-func (f RoundTripperFunc) RoundTrip(ctx context.Context, method specs.HttpMethod, url specs.Url, header *specs.Header, writer BodyWriter) (ClientResponse, error) {
+func (f RoundTripperFunc) RoundTrip(ctx context.Context, method specs.HttpMethod, url *specs.Url, header *specs.Header, writer BodyWriter) (ClientResponse, error) {
 	return f(ctx, method, url, header, writer)
 }
 
