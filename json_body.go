@@ -12,7 +12,7 @@ import (
 // The reqOrResp parameter is the [Request] or [ClientResponse] to read from.
 // The T parameter is the type of the JSON object to read.
 // The function returns the JSON object and an error if the request or response is not a JSON object.
-func ReadJson[T comparable](reqOrResp any) (*T, error) {
+func ReadJson[T any](reqOrResp any) (*T, error) {
 	var header *specs.Header
 	var body io.Reader
 	switch r := reqOrResp.(type) {

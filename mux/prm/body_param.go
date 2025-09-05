@@ -53,11 +53,11 @@ func (mfp *multipartFormParameter) GetParamValue(_ context.Context, req plow.Req
 
 // JsonParam creates a new ParameterProvider for extracting and parsing JSON data from the request body.
 // It parses application/json request bodies into the specified generic type T.
-func JsonParam[T comparable](conditions ...Condition[*T]) ParameterProvider[*T] {
+func JsonParam[T any](conditions ...Condition[*T]) ParameterProvider[*T] {
 	return &jsonParameter[T]{conditions}
 }
 
-type jsonParameter[T comparable] struct {
+type jsonParameter[T any] struct {
 	conditions []Condition[*T]
 }
 

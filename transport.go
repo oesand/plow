@@ -26,8 +26,7 @@ import (
 // Each call creates a new instance of [Transport]
 func DefaultTransport() *Transport {
 	return &Transport{
-		ReadLineMaxLength:   1024,
-		HeadMaxLength:       8 * 1024,
+		HeadMaxLength:       2 << 20,  // 2 mb
 		MaxBodySize:         10 << 20, // 10 mb
 		ReadTimeout:         10 * time.Second,
 		WriteTimeout:        10 * time.Second,
