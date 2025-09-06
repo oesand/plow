@@ -351,16 +351,16 @@ reading:
 				// Fail to parse Content-Length
 				stream.DefaultBufioReaderPool.Put(bufioReader)
 				if hasHijacker {
-					return nil, err
+					return nil, errors.New("cannot parse Content-Length value")
 				}
 			} else {
 				return nil, err
 			}
 		} else if isChunked || contentLength > 0 {
-			if transport.MaxBodySize > 0 {
+			if maxSize := transport.MaxBodySize; maxSize > 0 {
 				if isChunked {
-					contentLength = transport.MaxBodySize
-				} else if contentLength > transport.MaxBodySize {
+					contentLength = maxSize
+				} else if contentLength > maxSize {
 					return nil, specs.ErrTooLarge
 				}
 			}
