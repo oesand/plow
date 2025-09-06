@@ -19,7 +19,7 @@ func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 			return nil, err
 		}
 		totalLen = int64(len(line))
-		if totalLimit > 0 && totalLen > lineLimit {
+		if totalLimit > 0 && totalLen > totalLimit {
 			return nil, specs.ErrTooLarge
 		}
 
@@ -48,7 +48,7 @@ func ParseHeaders(ctx context.Context, reader *bufio.Reader, lineLimit int64, to
 			continue
 		}
 		totalLen += int64(len(line))
-		if totalLimit > 0 && totalLen > lineLimit {
+		if totalLimit > 0 && totalLen > totalLimit {
 			return nil, specs.ErrTooLarge
 		}
 

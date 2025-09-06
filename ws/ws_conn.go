@@ -244,7 +244,6 @@ func (conn *wsConn) readHeader() (*frameHeader, error) {
 		return nil, specs.ErrProtocol
 	}
 
-	// Ограничение длины кадра
 	if conn.maxFrameSize > 0 && header.Length > conn.maxFrameSize {
 		conn.writeClose(CloseCodeMessageTooBig)
 		return nil, specs.ErrTooLarge
