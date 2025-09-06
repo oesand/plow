@@ -52,7 +52,11 @@ const (
 	ContentTypeMultipartMixed = "multipart/mixed"
 )
 
-// TODO :: add tests
+// MatchContentType reports whether the Content-Type header value of h
+// matches the expected media type exactly (ignoring parameters and case).
+//
+// For example, if the header contains "application/json; charset=utf-8"
+// and expected is "application/json", it returns true.
 func MatchContentType(header *Header, expected string) bool {
 	contentType := header.Get("Content-Type")
 	if contentType == "" {
