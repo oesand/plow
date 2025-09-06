@@ -26,12 +26,14 @@ func ReadJson[T any](reqOrResp any) (*T, error) {
 		panic("plow: ReadJson support only Request and ClientResponse")
 	}
 
+	if !specs.MatchContentType(header, specs.ContentTypeJson) {
+		return nil, errors.New("request Content-Type isn't " + specs.ContentTypeJson)
+	}
+
 	if body == nil {
 		return nil, errors.New("missing body")
 	}
-	if header.Get("Content-Type") != specs.ContentTypeJson {
-		return nil, errors.New("request Content-Type isn't " + specs.ContentTypeJson)
-	}
+
 	var res T
 	dc := json.NewDecoder(body)
 	err := dc.Decode(&res)

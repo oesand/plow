@@ -1,5 +1,9 @@
 package specs
 
+import (
+	"strings"
+)
+
 // ContentType defines the content type of a file or data.
 //
 // It is used to specify the media type of the content being sent or received.
@@ -47,3 +51,15 @@ const (
 	ContentTypeMultipart      = "multipart/form-data"
 	ContentTypeMultipartMixed = "multipart/mixed"
 )
+
+// TODO :: add tests
+func MatchContentType(header *Header, expected string) bool {
+	contentType := header.Get("Content-Type")
+	if contentType == "" {
+		return false
+	}
+
+	base, _, _ := strings.Cut(contentType, ";")
+	mediaType := strings.TrimSpace(strings.ToLower(base))
+	return expected == mediaType
+}

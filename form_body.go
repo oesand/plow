@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/oesand/plow/specs"
 	"io"
-	"mime"
 )
 
 // ReadForm reads and parses the request body as a form
@@ -19,13 +18,7 @@ func ReadForm(req Request) (specs.Query, error) {
 		return nil, errors.New("missing body")
 	}
 
-	contentType := req.Header().Get("Content-Type")
-	if contentType == "" {
-		return nil, errors.New("request Content-Type isn't " + specs.ContentTypeForm)
-	}
-
-	ct, _, err := mime.ParseMediaType(contentType)
-	if err != nil || ct != specs.ContentTypeForm {
+	if !specs.MatchContentType(req.Header(), specs.ContentTypeForm) {
 		return nil, errors.New("request Content-Type isn't " + specs.ContentTypeForm)
 	}
 	b, err := io.ReadAll(body)
