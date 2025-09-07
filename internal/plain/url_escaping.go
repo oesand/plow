@@ -101,7 +101,7 @@ func shouldEscape(c byte, mode EscapingMode) bool {
 		// We add [ ] because we include [ipv6]:port as part of host.
 		// We add < > because they're the only characters left that
 		// we could possibly allow, and Parse will reject them if we
-		// escape them (because hosts can't use %-EscapingMode for
+		// escape them (because hosts can't use %-encoding for
 		// ASCII bytes).
 		switch c {
 		case '!', '$', '&', '\'', '(', ')', '*', '+', ',', ';', '=', ':', '[', ']', '<', '>', '"':
@@ -141,7 +141,7 @@ func shouldEscape(c byte, mode EscapingMode) bool {
 			return true
 
 		case EscapingFragment: // §4.1
-			// The RFC plain is silent but the grammar allows
+			// The RFC text is silent but the grammar allows
 			// everything, so escape nothing.
 			return false
 		}
@@ -160,6 +160,7 @@ func shouldEscape(c byte, mode EscapingMode) bool {
 		}
 	}
 
+	// Everything else must be escaped.
 	return true
 }
 

@@ -16,18 +16,6 @@ func MustParseUrl(url string) *Url {
 	return ur
 }
 
-// MustParseUrlQuery is a helper function that parses a URL string and sets the query if it is empty.
-func MustParseUrlQuery(url string, query Query) *Url {
-	obj, err := ParseUrl(url)
-	if err != nil {
-		panic(err)
-	}
-	if obj.Query == nil || len(obj.Query) == 0 {
-		obj.Query = query
-	}
-	return obj
-}
-
 // ParseUrl parses a URL string and returns a Url object.
 func ParseUrl(url string) (*Url, error) {
 	switch url {
@@ -218,11 +206,19 @@ func ParseUrl(url string) (*Url, error) {
 
 // Url represents URL with its components.
 type Url struct {
+	// Url raw component before escaping
 	Scheme, Username, Password,
 	Host, Path, Fragment string
 	Port uint16
 
+	// Query map of raw unescaped values represents of url Query.
 	Query Query
+
+	// PathSegments slice of raw unescaped components of Path.
+	//
+	// ParseUrl will ignore this field.
+	// if PathSegments provided String will use this and escape every segment.
+	PathSegments []string
 }
 
 // String returns the string representation of the URL.
@@ -230,14 +226,14 @@ type Url struct {
 func (url *Url) String() string {
 	var builder strings.Builder
 
-	if len(url.Host) > 0 {
-		if len(url.Scheme) > 0 {
+	if url.Host != "" {
+		if url.Scheme != "" {
 			builder.WriteString(url.Scheme)
 			builder.WriteString("://")
 		}
-		if len(url.Username) > 0 {
+		if url.Username != "" {
 			builder.WriteString(plain.EscapeUrl(url.Username, plain.EscapingUserPassword))
-			if len(url.Password) > 0 {
+			if url.Password != "" {
 				builder.WriteByte(':')
 				builder.WriteString(plain.EscapeUrl(url.Password, plain.EscapingUserPassword))
 			}
@@ -252,8 +248,23 @@ func (url *Url) String() string {
 		}
 	}
 
-	if len(url.Path) > 0 {
-		builder.WriteString(plain.EscapeUrl(url.Path, plain.EscapingPath))
+	if segments := url.PathSegments; segments != nil {
+		if len(segments) > 0 {
+			for _, segment := range segments {
+				builder.WriteByte('/')
+				builder.WriteString(plain.EscapeUrl(segment, plain.EscapingPathSegment))
+			}
+		} else {
+			builder.WriteByte('/')
+		}
+	} else if path := url.Path; path != "" {
+		if path[0] != '/' {
+			builder.WriteByte('/')
+		}
+
+		builder.WriteString(plain.EscapeUrl(path, plain.EscapingPath))
+	} else if url.Host != "" {
+		builder.WriteByte('/')
 	}
 
 	if url.Query.Any() {
@@ -261,7 +272,7 @@ func (url *Url) String() string {
 		builder.WriteString(url.Query.String())
 	}
 
-	if len(url.Fragment) > 0 {
+	if url.Fragment != "" {
 		builder.WriteByte('#')
 		builder.WriteString(plain.EscapeUrl(url.Fragment, plain.EscapingFragment))
 	}

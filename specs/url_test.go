@@ -411,86 +411,144 @@ func TestParseUrl(t *testing.T) {
 
 func TestUrl_String(t *testing.T) {
 	tests := []struct {
-		name     string
-		scheme   string
-		username string
-		password string
-		host     string
-		path     string
-		query    Query
-		fragment string
-		port     uint16
-		want     string
+		name string
+		url  *Url
+		want string
 	}{
 		{
-			name:   "Simple HTTP no path or query",
-			scheme: "http",
-			host:   "example.com",
-			want:   "http://example.com",
+			name: "Empty url",
+			url:  &Url{},
+			want: "",
 		},
 		{
-			name:   "Path with spaces",
-			scheme: "http",
-			host:   "example.com",
-			path:   "/foo bar/baz",
-			want:   "http://example.com/foo%20bar/baz",
+			name: "Simple HTTP url",
+			url: &Url{
+				Scheme: "http",
+				Host:   "example.com",
+			},
+			want: "http://example.com/",
 		},
 		{
-			name:   "Query with special characters",
-			scheme: "http",
-			host:   "example.com",
-			query:  Query{"a b": "c=d&"},
-			want:   "http://example.com?a+b=c%3Dd%26",
+			name: "Path with spaces",
+			url: &Url{
+				Scheme: "http",
+				Host:   "example.com",
+				Path:   "/foo bar/baz",
+			},
+			want: "http://example.com/foo%20bar/baz",
 		},
 		{
-			name:     "Full URL with all fields",
-			scheme:   "https",
-			username: "user",
-			password: "pass",
-			host:     "example.com",
-			path:     "/search results",
-			query:    Query{"q": "golang & rust", "lang": "en"},
-			fragment: "section 1",
-			port:     8443,
-			want:     "https://user:pass@example.com:8443/search%20results?lang=en&q=golang+%26+rust#section%201",
+			name: "Query with special characters",
+			url: &Url{
+				Scheme: "http",
+				Host:   "example.com",
+				Query:  Query{"a b": "c=d&"},
+			},
+			want: "http://example.com/?a+b=c%3Dd%26",
 		},
 		{
-			name:   "IPv6 with port and path",
-			scheme: "http",
-			host:   "[2001:db8::1]",
-			port:   8080,
-			path:   "/file/ü",
-			want:   "http://[2001:db8::1]:8080/file/%C3%BC",
+			name: "Path without leading slash",
+			url: &Url{
+				Path: "foo/bar",
+			},
+			want: "/foo/bar",
 		},
 		{
-			name:   "Empty query key and value",
-			scheme: "https",
-			host:   "example.com",
-			query:  Query{"": ""},
-			want:   "https://example.com?=",
+			name: "Http url has path without leading slash",
+			url: &Url{
+				Scheme: "http",
+				Host:   "example.com",
+				Path:   "foo/bar",
+			},
+			want: "http://example.com/foo/bar",
 		},
 		{
-			name:     "Username only",
-			scheme:   "http",
-			host:     "example.com",
-			username: "bob",
-			want:     "http://bob@example.com",
+			name: "Path segments",
+			url: &Url{
+				PathSegments: []string{"foo", "bar", "index.json"},
+			},
+			want: "/foo/bar/index.json",
+		},
+		{
+			name: "Path segments with special characters",
+			url: &Url{
+				PathSegments: []string{"search", "query", "hello world/every%where from/here.json"},
+			},
+			want: "/search/query/hello%20world%2Fevery%25where%20from%2Fhere.json",
+		},
+		{
+			name: "Path segments and path",
+			url: &Url{
+				Path:         "/other/path",
+				PathSegments: []string{"foo", "bar", "index.json"},
+			},
+			want: "/foo/bar/index.json",
+		},
+		{
+			name: "Empty path segments and path",
+			url: &Url{
+				Path:         "/other/path",
+				PathSegments: []string{},
+			},
+			want: "/",
+		},
+		{
+			name: "Http url has path and path segments with special characters",
+			url: &Url{
+				Scheme:       "http",
+				Host:         "example.com",
+				Path:         "/other/path",
+				PathSegments: []string{"search", "query", "hello world/every%where from/here.json"},
+			},
+			want: "http://example.com/search/query/hello%20world%2Fevery%25where%20from%2Fhere.json",
+		},
+		{
+			name: "Full URL with all fields",
+			url: &Url{
+				Scheme:   "https",
+				Username: "user",
+				Password: "pass",
+				Host:     "example.com",
+				Path:     "/search results",
+				Query:    Query{"q": "golang & rust", "lang": "en"},
+				Fragment: "section 1",
+				Port:     8443,
+			},
+			want: "https://user:pass@example.com:8443/search%20results?lang=en&q=golang+%26+rust#section%201",
+		},
+		{
+			name: "IPv6 with port and path",
+			url: &Url{
+				Scheme: "http",
+				Host:   "[2001:db8::1]",
+				Port:   8080,
+				Path:   "/file/ü",
+			},
+			want: "http://[2001:db8::1]:8080/file/%C3%BC",
+		},
+		{
+			name: "Empty query key and value",
+			url: &Url{
+				Scheme: "https",
+				Host:   "example.com",
+				Query:  Query{"": ""},
+			},
+			want: "https://example.com/?=",
+		},
+		{
+			name: "Username only",
+			url: &Url{
+				Scheme:   "http",
+				Host:     "example.com",
+				Username: "bob",
+			},
+			want: "http://bob@example.com/",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			url := &Url{
-				Scheme:   tt.scheme,
-				Username: tt.username,
-				Password: tt.password,
-				Host:     tt.host,
-				Path:     tt.path,
-				Query:    tt.query,
-				Fragment: tt.fragment,
-				Port:     tt.port,
-			}
-			if got := url.String(); got != tt.want {
+			if got := tt.url.String(); got != tt.want {
 				t.Errorf("String() = %v, want %v", got, tt.want)
 			}
 		})
