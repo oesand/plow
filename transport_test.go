@@ -82,6 +82,35 @@ func TestTransport_PostRequest(t *testing.T) {
 	checkResponseBody(t, resp, []byte("received"))
 }
 
+func TestTransport_GetRequestWithPathSegments(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/search/query/hello world/" {
+			t.Errorf("invalid path: %s", r.URL.Path)
+		}
+
+		if r.URL.RawPath != "/search/query/hello%20world%2F" {
+			t.Errorf("invalid raw path: %s", r.URL.RawPath)
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	defer server.Close()
+
+	url := specs.MustParseUrl(server.URL)
+	url.Path = "/invalid/path"
+	url.PathSegments = []string{"search", "query", "hello world/"}
+
+	resp, err := DefaultTransport().RoundTrip(
+		context.Background(), specs.HttpMethodGet, url, specs.NewHeader(), nil)
+
+	if err != nil {
+		t.Fatal("req:", err)
+	}
+
+	checkResponseBody(t, resp, []byte("OK"))
+}
+
 // Test chunked transfer
 
 func TestTransport_ChunkedTransferEncoding(t *testing.T) {
