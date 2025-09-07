@@ -274,7 +274,7 @@ func (transport *Transport) RoundTrip(ctx context.Context, method specs.HttpMeth
 		defer conn.SetWriteDeadline(time.Time{})
 	}
 
-	_, err = client_ops.WriteRequestHead(conn, method, url.Path, url.Query, header)
+	_, err = client_ops.WriteRequestHead(conn, method, url.EscapedPath(), url.Query, header)
 
 	if err == nil {
 		err = ctx.Err()

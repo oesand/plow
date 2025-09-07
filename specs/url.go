@@ -221,6 +221,31 @@ type Url struct {
 	PathSegments []string
 }
 
+// EscapedPath returns the escaped form of Path.
+// In general there are multiple possible escaped forms of any path.
+// EscapedPath returns PathSegments when it is provided.
+// Otherwise, EscapedPath ignores PathSegments and computes an escaped
+// form of Path.
+func (url *Url) EscapedPath() string {
+	if segments := url.PathSegments; segments != nil {
+		if len(segments) > 0 {
+			var builder strings.Builder
+			for _, segment := range segments {
+				builder.WriteByte('/')
+				builder.WriteString(plain.EscapeUrl(segment, plain.EscapingPathSegment))
+			}
+			return builder.String()
+		}
+	} else if path := url.Path; path != "" {
+		escaped := plain.EscapeUrl(path, plain.EscapingPath)
+		if path[0] != '/' {
+			escaped = "/" + escaped
+		}
+		return escaped
+	}
+	return ""
+}
+
 // String returns the string representation of the URL.
 // It constructs the URL from its components, escaping them as necessary.
 func (url *Url) String() string {
@@ -248,21 +273,8 @@ func (url *Url) String() string {
 		}
 	}
 
-	if segments := url.PathSegments; segments != nil {
-		if len(segments) > 0 {
-			for _, segment := range segments {
-				builder.WriteByte('/')
-				builder.WriteString(plain.EscapeUrl(segment, plain.EscapingPathSegment))
-			}
-		} else {
-			builder.WriteByte('/')
-		}
-	} else if path := url.Path; path != "" {
-		if path[0] != '/' {
-			builder.WriteByte('/')
-		}
-
-		builder.WriteString(plain.EscapeUrl(path, plain.EscapingPath))
+	if path := url.EscapedPath(); path != "" {
+		builder.WriteString(path)
 	} else if url.Host != "" {
 		builder.WriteByte('/')
 	}

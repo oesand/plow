@@ -409,6 +409,86 @@ func TestParseUrl(t *testing.T) {
 	}
 }
 
+func TestUrl_EscapedPath(t *testing.T) {
+	tests := []struct {
+		name string
+		url  *Url
+		want string
+	}{
+		{
+			name: "Path with spaces",
+			url: &Url{
+				Path: "/foo bar/baz",
+			},
+			want: "/foo%20bar/baz",
+		},
+		{
+			name: "Path without leading slash",
+			url: &Url{
+				Path: "foo/bar",
+			},
+			want: "/foo/bar",
+		},
+		{
+			name: "Http url has path without leading slash",
+			url: &Url{
+				Scheme: "http",
+				Host:   "example.com",
+				Path:   "foo/bar",
+			},
+			want: "/foo/bar",
+		},
+		{
+			name: "Path segments",
+			url: &Url{
+				PathSegments: []string{"foo", "bar", "index.json"},
+			},
+			want: "/foo/bar/index.json",
+		},
+		{
+			name: "Path segments with special characters",
+			url: &Url{
+				PathSegments: []string{"search", "query", "hello world/every%where from/here.json"},
+			},
+			want: "/search/query/hello%20world%2Fevery%25where%20from%2Fhere.json",
+		},
+		{
+			name: "Path segments and path",
+			url: &Url{
+				Path:         "/other/path",
+				PathSegments: []string{"foo", "bar", "index.json"},
+			},
+			want: "/foo/bar/index.json",
+		},
+		{
+			name: "Empty path segments and path",
+			url: &Url{
+				Path:         "/other/path",
+				PathSegments: []string{},
+			},
+			want: "",
+		},
+		{
+			name: "Http url has path and path segments with special characters",
+			url: &Url{
+				Scheme:       "http",
+				Host:         "example.com",
+				Path:         "/other/path",
+				PathSegments: []string{"search", "query", "hello world/every%where from/here.json"},
+			},
+			want: "/search/query/hello%20world%2Fevery%25where%20from%2Fhere.json",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.url.EscapedPath(); got != tt.want {
+				t.Errorf("EscapedPath() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestUrl_String(t *testing.T) {
 	tests := []struct {
 		name string
@@ -490,7 +570,7 @@ func TestUrl_String(t *testing.T) {
 				Path:         "/other/path",
 				PathSegments: []string{},
 			},
-			want: "/",
+			want: "",
 		},
 		{
 			name: "Http url has path and path segments with special characters",
