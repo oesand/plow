@@ -22,12 +22,12 @@ type formParameter struct {
 func (fp *formParameter) GetParamValue(_ context.Context, req plow.Request) (specs.Query, plow.Response) {
 	form, err := plow.ReadForm(req)
 	if err != nil {
-		return nil, ErrorResponse(err.Error())
+		return nil, errResponse(err)
 	}
 
 	for _, condition := range fp.conditions {
 		if err = condition.Validate(form); err != nil {
-			return nil, ErrorResponse(err.Error())
+			return nil, errResponse(err)
 		}
 	}
 
@@ -45,7 +45,7 @@ type multipartFormParameter struct{}
 func (mfp *multipartFormParameter) GetParamValue(_ context.Context, req plow.Request) (*multipart.Reader, plow.Response) {
 	reader, err := plow.MultipartReader(req)
 	if err != nil {
-		return nil, ErrorResponse(err.Error())
+		return nil, errResponse(err)
 	}
 
 	return reader, nil
@@ -64,12 +64,12 @@ type jsonParameter[T any] struct {
 func (jp *jsonParameter[T]) GetParamValue(_ context.Context, req plow.Request) (*T, plow.Response) {
 	instance, err := plow.ReadJson[T](req)
 	if err != nil {
-		return nil, ErrorResponse(err.Error())
+		return nil, errResponse(err)
 	}
 
 	for _, condition := range jp.conditions {
 		if err = condition.Validate(instance); err != nil {
-			return nil, ErrorResponse(err.Error())
+			return nil, errResponse(err)
 		}
 	}
 
