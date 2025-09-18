@@ -23,7 +23,7 @@ func DefaultServer(handler Handler) *Server {
 	return &Server{
 		Handler:             handler,
 		ReadLineMaxLength:   1024,
-		HeadMaxLength:       8 * 1024,
+		HeadMaxLength:       2 << 20,  // 2 mb
 		MaxBodySize:         10 << 20, // 10 mb
 		IdleTimeout:         20 * time.Second,
 		ReadTimeout:         10 * time.Second,

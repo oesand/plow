@@ -2,20 +2,29 @@ package mux
 
 import (
 	"context"
-	"iter"
-
 	"github.com/oesand/plow"
 	"github.com/oesand/plow/specs"
+	"iter"
 )
 
 // NextFunc represents a function that continues the middleware chain execution.
 // It takes a context and returns the next response in the chain.
 type NextFunc func(ctx context.Context) plow.Response
 
-// Middleware represents a function that can intercept and process HTTP requests
+// Middleware is an interface that can intercept and process HTTP requests
 // before they reach the final handler. It can modify the request, execute
 // additional logic, or short-circuit the request processing.
-type Middleware func(ctx context.Context, request plow.Request, next NextFunc) plow.Response
+type Middleware interface {
+	Intercept(ctx context.Context, request plow.Request, next NextFunc) plow.Response
+}
+
+// MiddlewareFunc shorthand implementation for [Middleware]
+type MiddlewareFunc func(ctx context.Context, request plow.Request, next NextFunc) plow.Response
+
+// Intercept triggers top level function [MiddlewareFunc]
+func (f MiddlewareFunc) Intercept(ctx context.Context, request plow.Request, next NextFunc) plow.Response {
+	return f(ctx, request, next)
+}
 
 // RouterBuilder provides an interface for building and configuring route collections.
 // It allows adding routes, including other routers, and retrieving all configured routes.

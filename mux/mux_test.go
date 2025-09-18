@@ -153,20 +153,20 @@ func TestMux(t *testing.T) {
 
 		mx := New()
 
-		mx.Use(func(ctx context.Context, request plow.Request, next NextFunc) plow.Response {
+		mx.Use(MiddlewareFunc(func(ctx context.Context, request plow.Request, next NextFunc) plow.Response {
 			firstMiddleware.Add(1)
 			return next(ctx)
-		})
+		}))
 
-		mx.Use(func(ctx context.Context, request plow.Request, next NextFunc) plow.Response {
+		mx.Use(MiddlewareFunc(func(ctx context.Context, request plow.Request, next NextFunc) plow.Response {
 			secondMiddleware.Add(1)
 			return next(ctx)
-		})
+		}))
 
-		mx.Use(func(ctx context.Context, request plow.Request, next NextFunc) plow.Response {
+		mx.Use(MiddlewareFunc(func(ctx context.Context, request plow.Request, next NextFunc) plow.Response {
 			thirdMiddleware.Add(1)
 			return next(ctx)
-		})
+		}))
 
 		mx.NotFoundHandler(plow.HandlerFunc(func(ctx context.Context, request plow.Request) plow.Response {
 			if visitNotFound.Load() {

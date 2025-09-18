@@ -38,9 +38,16 @@ type OptionalParameterProvider[T any] interface {
 }
 
 // ErrorResponse returns a response with a bad request status code and the error message.
-func ErrorResponse(format string, p ...any) plow.Response {
-	body := errorResponse{
-		Error: fmt.Sprintf(format, p...),
+func ErrorResponse(f string, p ...any) plow.Response {
+	body := &errorResponse{
+		Error: fmt.Sprintf(f, p...),
+	}
+	return plow.JsonResponse(specs.StatusCodeBadRequest, body)
+}
+
+func errResponse(err error) plow.Response {
+	body := &errorResponse{
+		Error: err.Error(),
 	}
 	return plow.JsonResponse(specs.StatusCodeBadRequest, body)
 }
