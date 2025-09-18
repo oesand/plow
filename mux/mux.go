@@ -110,7 +110,7 @@ func (mx *mux) Handle(ctx context.Context, request plow.Request) plow.Response {
 		var nextFunc NextFunc
 		nextFunc = func(ctx context.Context) plow.Response {
 			if md, ok := nextMd(); ok {
-				return md(ctx, request, nextFunc)
+				return md.Intercept(ctx, request, nextFunc)
 			}
 			return mx.handle(ctx, request)
 		}

@@ -39,13 +39,13 @@ type OptionalParameterProvider[T any] interface {
 
 // ErrorResponse returns a response with a bad request status code and the error message.
 func ErrorResponse(format string, p ...any) plow.Response {
-	body := errorResponse{
+	body := &ErrorBody{
 		Error: fmt.Sprintf(format, p...),
 	}
 	return plow.JsonResponse(specs.StatusCodeBadRequest, body)
 }
 
-type errorResponse struct {
+type ErrorBody struct {
 	Error string `json:"error"`
 }
 
