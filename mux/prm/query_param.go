@@ -38,7 +38,7 @@ func (qp *queryParameter[T]) GetParamValue(_ context.Context, req plow.Request) 
 	var resp plow.Response
 	if str == "" {
 		if qp.required {
-			resp = ErrorResponse("query parameter '%s' is required", qp.name)
+			resp = ValidationErrorResponse("query parameter '%s' is required", qp.name)
 		}
 		return val, resp
 	}
@@ -49,7 +49,7 @@ func (qp *queryParameter[T]) GetParamValue(_ context.Context, req plow.Request) 
 	case bool:
 		bv, err := strconv.ParseBool(str)
 		if err != nil {
-			resp = ErrorResponse("query parameter '%s' must be bool", qp.name)
+			resp = ValidationErrorResponse("query parameter '%s' must be bool", qp.name)
 			break
 		}
 		val = any(bv).(T)
@@ -57,7 +57,7 @@ func (qp *queryParameter[T]) GetParamValue(_ context.Context, req plow.Request) 
 		bitSize := bitSizeNum(val)
 		uiv, err := strconv.ParseUint(str, 10, bitSize)
 		if err != nil {
-			resp = ErrorResponse("query parameter '%s' must be integer", qp.name)
+			resp = ValidationErrorResponse("query parameter '%s' must be integer", qp.name)
 			break
 		}
 		val = any(uiv).(T)
@@ -65,7 +65,7 @@ func (qp *queryParameter[T]) GetParamValue(_ context.Context, req plow.Request) 
 		bitSize := bitSizeNum(val)
 		iv, err := strconv.ParseInt(str, 10, bitSize)
 		if err != nil {
-			resp = ErrorResponse("query parameter '%s' must be integer", qp.name)
+			resp = ValidationErrorResponse("query parameter '%s' must be integer", qp.name)
 			break
 		}
 		val = any(iv).(T)
@@ -73,7 +73,7 @@ func (qp *queryParameter[T]) GetParamValue(_ context.Context, req plow.Request) 
 		bitSize := bitSizeNum(val)
 		iv, err := strconv.ParseFloat(str, bitSize)
 		if err != nil {
-			resp = ErrorResponse("query parameter '%s' must be float", qp.name)
+			resp = ValidationErrorResponse("query parameter '%s' must be float", qp.name)
 			break
 		}
 		val = any(iv).(T)
@@ -83,7 +83,7 @@ func (qp *queryParameter[T]) GetParamValue(_ context.Context, req plow.Request) 
 
 	for _, condition := range qp.conditions {
 		if err := condition.Validate(val); err != nil {
-			resp = ErrorResponse("query parameter '%s' is invalid: %s", qp.name, err)
+			resp = ValidationErrorResponse("query parameter '%s' is invalid: %s", qp.name, err)
 			break
 		}
 	}

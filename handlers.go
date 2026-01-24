@@ -24,7 +24,7 @@ type Handler interface {
 // ErrorHandler is an interface representing the ability to handle errors
 // that occur during the processing of a request by a [Server].
 type ErrorHandler interface {
-	HandleError(ctx context.Context, conn net.Conn, err any)
+	HandleError(ctx context.Context, request Request, conn net.Conn, err any)
 }
 
 // RoundTripper is an interface representing the ability to execute a
@@ -62,11 +62,11 @@ func (f HandlerFunc) Handle(ctx context.Context, request Request) Response {
 }
 
 // ErrorHandlerFunc shorthand implementation for [ErrorHandler]
-type ErrorHandlerFunc func(ctx context.Context, conn net.Conn, err any)
+type ErrorHandlerFunc func(ctx context.Context, request Request, conn net.Conn, err any)
 
 // HandleError triggers top level function [ErrorHandlerFunc]
-func (f ErrorHandlerFunc) HandleError(ctx context.Context, conn net.Conn, err any) {
-	f(ctx, conn, err)
+func (f ErrorHandlerFunc) HandleError(ctx context.Context, request Request, conn net.Conn, err any) {
+	f(ctx, request, conn, err)
 }
 
 // RoundTripperFunc shorthand implementation for [RoundTripper]

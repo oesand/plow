@@ -35,14 +35,14 @@ func (cp *cookieParameter) GetParamValue(_ context.Context, req plow.Request) (s
 	var resp plow.Response
 	if value == "" {
 		if cp.required {
-			resp = ErrorResponse("cookie '%s' is required", cp.name)
+			resp = ValidationErrorResponse("cookie '%s' is required", cp.name)
 		}
 		return value, resp
 	}
 
 	for _, condition := range cp.conditions {
 		if err := condition.Validate(value); err != nil {
-			resp = ErrorResponse("cookie '%s' is invalid: %s", cp.name, err)
+			resp = ValidationErrorResponse("cookie '%s' is invalid: %s", cp.name, err)
 			break
 		}
 	}

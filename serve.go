@@ -88,7 +88,7 @@ func (srv *Server) Serve(listener net.Listener) error {
 			defer func() {
 				if err := recover(); err != nil {
 					if errorHandler != nil {
-						errorHandler.HandleError(ctx, conn, err)
+						errorHandler.HandleError(ctx, nil, conn, err)
 					} else {
 						conn.SetDeadline(time.Now().Add(time.Second))
 						responseInternalServerError.WriteTo(conn)
@@ -97,9 +97,9 @@ func (srv *Server) Serve(listener net.Listener) error {
 				conn.Close()
 			}()
 
-			if err := srv.handle(ctx, conn, handler); err != nil {
+			if req, err := srv.handle(ctx, conn, handler); err != nil {
 				if errorHandler != nil {
-					errorHandler.HandleError(ctx, conn, err)
+					errorHandler.HandleError(ctx, req, conn, err)
 				} else {
 					conn.SetDeadline(time.Now().Add(time.Second))
 					var respErr *server_ops.ErrorResponse
@@ -137,10 +137,10 @@ func (srv *Server) accept(ctx context.Context, listener net.Listener) (net.Conn,
 	}
 }
 
-func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) error {
+func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) (Request, error) {
 	var err error
 	if err = ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
 
 	if tlsConn, ok := conn.(*tls.Conn); ok {
@@ -155,9 +155,9 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 			// 400 response on the TLS conn underlying net.Conn.
 			var re tls.RecordHeaderError
 			if errors.As(err, &re) && re.Conn != nil && server_ops.TlsRecordHeaderLikeHTTP(re.RecordHeader) {
-				return responseErrDowngradeHTTPS
+				return nil, responseErrDowngradeHTTPS
 			}
-			return err
+			return nil, err
 		}
 
 		if srv.TLSHandshakeTimeout > 0 {
@@ -169,7 +169,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 		if srv.tlsNextProtos != nil {
 			if handler, ok := srv.tlsNextProtos[proto]; ok {
 				handler(tlsConn)
-				return nil
+				return nil, nil
 			}
 		}
 	}
@@ -201,7 +201,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 				// Wait for the connection to become readable again
 				// before trying to read the next request.
 				if _, err := bufioReader.Peek(4); err != nil {
-					return nil
+					return nil, nil
 				}
 
 				conn.SetReadDeadline(time.Time{})
@@ -219,9 +219,9 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 		}
 		if err != nil {
 			if !catch.IsCommonNetReadError(err) {
-				return responseErrNotProcessable
+				return req, responseErrNotProcessable
 			}
-			return err
+			return req, err
 		}
 
 		protoMajor, protoMinor := req.ProtoVersion()
@@ -241,7 +241,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 			if isHttp11 && strings.EqualFold(expectHeader, "100-continue") {
 				expectContinue = true
 			} else {
-				return responseExpectationFailedError
+				return req, responseExpectationFailedError
 			}
 		}
 
@@ -262,13 +262,13 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 			isChunked, contentLength, err = parsing.ParseContentLength(req.Header())
 			if err != nil {
 				if errors.Is(err, parsing.ErrParsing) {
-					return responseInvalidContentLength
+					return req, responseInvalidContentLength
 				}
 				if errors.Is(err, specs.ErrUnknownTransferEncoding) {
-					return responseUnsupportedTransferEncoding
+					return req, responseUnsupportedTransferEncoding
 				}
 
-				return err
+				return req, err
 			}
 
 			if isChunked || contentLength > 0 {
@@ -276,7 +276,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 					if isChunked {
 						contentLength = srv.MaxBodySize
 					} else if contentLength > srv.MaxBodySize {
-						return responseErrBodyTooLarge
+						return req, responseErrBodyTooLarge
 					}
 				}
 
@@ -294,7 +294,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 		}
 
 		if err = ctx.Err(); err != nil {
-			return err
+			return req, err
 		}
 
 		if srv.WriteTimeout > 0 {
@@ -370,7 +370,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 					var cachedBody bytes.Buffer
 					err = srv.writeBody(writable, &cachedBody, false, selectedEncoding)
 					if err != nil {
-						return err
+						return req, err
 					}
 					encodedContent = cachedBody.Bytes()
 					header.Set("Content-Length", strconv.Itoa(len(encodedContent)))
@@ -386,11 +386,11 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 		_, err = server_ops.WriteResponseHead(conn, isHttp11, code, header)
 
 		if err != nil {
-			return err
+			return req, err
 		}
 
 		if err = ctx.Err(); err != nil {
-			return err
+			return req, err
 		}
 
 		if encodedContent != nil {
@@ -402,11 +402,11 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 		}
 
 		if err != nil {
-			return err
+			return req, err
 		}
 
 		if err = ctx.Err(); err != nil {
-			return err
+			return req, err
 		} else if hijacker := req.Hijacker(); hijacker != nil {
 			hijacker(ctx, conn)
 			break
@@ -417,7 +417,7 @@ func (srv *Server) handle(ctx context.Context, conn net.Conn, handler Handler) e
 		}
 	}
 
-	return nil
+	return nil, nil
 }
 
 func (srv *Server) writeBody(writable BodyWriter, writer io.Writer, chunked bool, contentEncoding string) error {

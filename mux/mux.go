@@ -124,16 +124,18 @@ func (mx *mux) Handle(ctx context.Context, request plow.Request) plow.Response {
 func (mx *mux) handle(ctx context.Context, request plow.Request) plow.Response {
 	if mx.routes != nil {
 		url := request.Url()
-		routes := mx.routes[request.Method()]
-		for _, rt := range routes {
-			if ok, params := rt.Match(url.Path); ok {
-				for key, value := range params {
-					if url.Query == nil {
-						url.Query = make(specs.Query)
+		routes, has := mx.routes[request.Method()]
+		if has {
+			for _, rt := range routes {
+				if ok, params := rt.Match(url.Path); ok {
+					for key, value := range params {
+						if url.Query == nil {
+							url.Query = make(specs.Query)
+						}
+						url.Query[key] = value
 					}
-					url.Query[key] = value
+					return rt.Handler().Handle(ctx, request)
 				}
-				return rt.Handler().Handle(ctx, request)
 			}
 		}
 	}

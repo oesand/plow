@@ -32,14 +32,14 @@ func (hp *headerParameter) GetParamValue(_ context.Context, req plow.Request) (s
 	var resp plow.Response
 	if value == "" {
 		if hp.required {
-			resp = ErrorResponse("header '%s' is required", hp.name)
+			resp = ValidationErrorResponse("header '%s' is required", hp.name)
 		}
 		return value, resp
 	}
 
 	for _, condition := range hp.conditions {
 		if err := condition.Validate(value); err != nil {
-			resp = ErrorResponse("header '%s' is invalid: %s", hp.name, err)
+			resp = ValidationErrorResponse("header '%s' is invalid: %s", hp.name, err)
 			break
 		}
 	}

@@ -37,19 +37,19 @@ type OptionalParameterProvider[T any] interface {
 	Require() OptionalParameterProvider[T]
 }
 
-// ErrorResponse returns a response with a bad request status code and the error message.
-func ErrorResponse(f string, p ...any) plow.Response {
+// ValidationErrorResponse returns a response with a unprocessable entity status code (422) and the error message.
+func ValidationErrorResponse(f string, p ...any) plow.Response {
 	body := &errorResponse{
 		Error: fmt.Sprintf(f, p...),
 	}
-	return plow.JsonResponse(specs.StatusCodeBadRequest, body)
+	return plow.JsonResponse(specs.StatusCodeUnprocessableEntity, body)
 }
 
-func errResponse(err error) plow.Response {
+func validationErrResponse(err error) plow.Response {
 	body := &errorResponse{
 		Error: err.Error(),
 	}
-	return plow.JsonResponse(specs.StatusCodeBadRequest, body)
+	return plow.JsonResponse(specs.StatusCodeUnprocessableEntity, body)
 }
 
 type errorResponse struct {
