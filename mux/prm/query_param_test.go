@@ -412,8 +412,8 @@ func TestQueryParamErrorMessages(t *testing.T) {
 		}
 
 		// Check that the error message contains the parameter name
-		if resp.StatusCode() != specs.StatusCodeBadRequest {
-			t.Errorf("expected bad request status, got %v", resp.StatusCode())
+		if resp.StatusCode() != specs.StatusCodeUnprocessableEntity {
+			t.Errorf("expected StatusCodeUnprocessableEntity, got %v", resp.StatusCode())
 		}
 	})
 
@@ -428,8 +428,8 @@ func TestQueryParamErrorMessages(t *testing.T) {
 			t.Error("expected error response, got nil")
 		}
 
-		if resp.StatusCode() != specs.StatusCodeBadRequest {
-			t.Errorf("expected bad request status, got %v", resp.StatusCode())
+		if resp.StatusCode() != specs.StatusCodeUnprocessableEntity {
+			t.Errorf("expected StatusCodeUnprocessableEntity, got %v", resp.StatusCode())
 		}
 	})
 
@@ -444,8 +444,8 @@ func TestQueryParamErrorMessages(t *testing.T) {
 			t.Error("expected error response, got nil")
 		}
 
-		if resp.StatusCode() != specs.StatusCodeBadRequest {
-			t.Errorf("expected bad request status, got %v", resp.StatusCode())
+		if resp.StatusCode() != specs.StatusCodeUnprocessableEntity {
+			t.Errorf("expected StatusCodeUnprocessableEntity, got %v", resp.StatusCode())
 		}
 	})
 
@@ -460,8 +460,8 @@ func TestQueryParamErrorMessages(t *testing.T) {
 			t.Error("expected error response, got nil")
 		}
 
-		if resp.StatusCode() != specs.StatusCodeBadRequest {
-			t.Errorf("expected bad request status, got %v", resp.StatusCode())
+		if resp.StatusCode() != specs.StatusCodeUnprocessableEntity {
+			t.Errorf("expected StatusCodeUnprocessableEntity, got %v", resp.StatusCode())
 		}
 	})
 }

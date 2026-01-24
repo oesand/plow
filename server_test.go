@@ -918,7 +918,7 @@ func TestServer_PanicHandling(t *testing.T) {
 	server := DefaultServer(HandlerFunc(func(ctx context.Context, request Request) Response {
 		panic("test panic")
 	}))
-	server.ErrorHandler = ErrorHandlerFunc(func(ctx context.Context, conn net.Conn, err any) {
+	server.ErrorHandler = ErrorHandlerFunc(func(ctx context.Context, _ Request, conn net.Conn, err any) {
 		ShortResponseWriter(specs.StatusCodeInternalServerError, "panic handled").WriteTo(conn)
 		panicHandled.Store(true)
 	})
